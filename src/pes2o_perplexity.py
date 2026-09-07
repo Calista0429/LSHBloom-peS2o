@@ -4,9 +4,10 @@ import gzip
 import io
 import json
 import math
+import time
 import urllib.request
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any, Callable, Iterable, Iterator
 
 
 SUPPORTED_SOURCES = {"s2orc", "s2ag"}
@@ -149,6 +150,140 @@ def combine_source_metrics(metrics: Iterable[dict]) -> dict:
         "loss": loss,
         "perplexity": perplexity_from_loss(loss),
     }
+
+
+def count_shifted_targets(labels: Any) -> int:
+    return int(labels[:, 1:].ne(-100).sum().item())
+
+
+def _iter_batches(items: Iterable[dict], batch_size: int) -> Iterator[list[dict]]:
+    if batch_size < 1:
+        raise ValueError("batch_size must be positive")
+    batch: list[dict] = []
+    for item in items:
+        batch.append(item)
+        if len(batch) == batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
+def evaluate_source(
+    model: Any,
+    packed_sequences: Iterable[dict],
+    source: str,
+    batch_size: int,
+    device: str,
+    log_every_steps: int,
+    progress_callback: Callable[[dict], None] | None = None,
+) -> dict:
+    import torch
+
+    if source not in SUPPORTED_SOURCES:
+        raise ValueError(f"unsupported source {source}")
+    if log_every_steps < 1:
+        raise ValueError("log_every_steps must be positive")
+
+    start = time.perf_counter()
+    total_nll = 0.0
+    predicted_tokens = 0
+    input_tokens = 0
+    sequence_count = 0
+    batch_count = 0
+    document_ids: list[str] = []
+    seen_document_ids: set[str] = set()
+    last_logged_batch = 0
+
+    try:
+        with torch.inference_mode():
+            for batch_count, batch in enumerate(
+                _iter_batches(packed_sequences, batch_size), start=1
+            ):
+                input_ids = torch.tensor(
+                    [item["input_ids"] for item in batch],
+                    dtype=torch.long,
+                    device=device,
+                )
+                labels = torch.tensor(
+                    [item["labels"] for item in batch],
+                    dtype=torch.long,
+                    device=device,
+                )
+                attention_mask = labels.ne(-100).long()
+                batch_targets = count_shifted_targets(labels)
+                if batch_targets < 1:
+                    raise ValueError("a packed batch contained no prediction targets")
+
+                outputs = model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    labels=labels,
+                )
+                batch_loss = float(outputs.loss.item())
+                if not math.isfinite(batch_loss):
+                    raise ValueError(
+                        f"non-finite loss for {source} at batch {batch_count}"
+                    )
+
+                total_nll += batch_loss * batch_targets
+                predicted_tokens += batch_targets
+                input_tokens += int(labels.ne(-100).sum().item())
+                sequence_count += len(batch)
+                for item in batch:
+                    for document_id in item["document_ids"]:
+                        if document_id not in seen_document_ids:
+                            seen_document_ids.add(document_id)
+                            document_ids.append(document_id)
+
+                if progress_callback is not None and (
+                    batch_count == 1 or batch_count % log_every_steps == 0
+                ):
+                    elapsed = max(time.perf_counter() - start, 1e-9)
+                    running_loss = total_nll / predicted_tokens
+                    progress_callback(
+                        {
+                            "source": source,
+                            "batch": batch_count,
+                            "sequences": sequence_count,
+                            "predicted_tokens": predicted_tokens,
+                            "loss": running_loss,
+                            "perplexity": perplexity_from_loss(running_loss),
+                            "tokens_per_second": predicted_tokens / elapsed,
+                            "elapsed_seconds": elapsed,
+                            "gpu_memory_gb": torch.cuda.memory_allocated() / (1024**3),
+                        }
+                    )
+                    last_logged_batch = batch_count
+    except torch.cuda.OutOfMemoryError as error:
+        raise RuntimeError(
+            f"CUDA ran out of memory with batch_size={batch_size}; "
+            "reduce CONFIG['batch_size'] and rerun"
+        ) from error
+
+    if predicted_tokens < 1:
+        raise ValueError(f"no prediction targets were evaluated for {source}")
+
+    elapsed = max(time.perf_counter() - start, 1e-9)
+    loss = total_nll / predicted_tokens
+    result = {
+        "source": source,
+        "documents": len(document_ids),
+        "document_ids": document_ids,
+        "sequences": sequence_count,
+        "batches": batch_count,
+        "input_tokens": input_tokens,
+        "predicted_tokens": predicted_tokens,
+        "negative_log_likelihood": total_nll,
+        "loss": loss,
+        "perplexity": perplexity_from_loss(loss),
+        "elapsed_seconds": elapsed,
+        "tokens_per_second": predicted_tokens / elapsed,
+    }
+
+    if progress_callback is not None and last_logged_batch != batch_count:
+        progress_callback({**result, "batch": batch_count})
+    return result
 
 
 def write_result_json(path: str | Path, result: dict) -> Path:
