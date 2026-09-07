@@ -1,3 +1,5 @@
+import gzip
+import json
 import math
 import tempfile
 import unittest
@@ -5,8 +7,10 @@ from pathlib import Path
 
 from src.pes2o_dedup import (
     build_indexes,
+    DedupConfig,
     normalize_unigrams,
     per_filter_fp,
+    prepare_variants,
     stream_decisions,
 )
 
@@ -93,6 +97,86 @@ class DedupCoreTests(unittest.TestCase):
                         seed=1,
                     )
                 )
+
+
+class FakeTokenizer:
+    eos_token_id = 99
+
+    def encode(self, text, add_special_tokens=False):
+        if add_special_tokens:
+            raise AssertionError("special tokens must be disabled")
+        return list(range(len(text.split())))
+
+
+class PrepareVariantsTests(unittest.TestCase):
+    def test_prepare_writes_valid_variants_and_manifest(self):
+        records = [
+            {"id": "first", "source": "s2orc/train", "text": "alpha beta gamma"},
+            {"id": "other", "source": "s2orc/train", "text": "delta epsilon zeta"},
+            {"id": "copy", "source": "s2orc/train", "text": "Alpha beta gamma"},
+        ]
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            input_path = root / "input.jsonl.gz"
+            with gzip.open(input_path, "wt", encoding="utf-8") as stream:
+                for record in records:
+                    stream.write(json.dumps(record) + "\n")
+
+            output_dir = root / "output"
+            manifest = prepare_variants(
+                input_path=input_path,
+                output_dir=output_dir,
+                config=DedupConfig(
+                    expected_documents=3,
+                    num_perm=64,
+                    training_gate_rate=0.30,
+                ),
+                tokenizer=FakeTokenizer(),
+            )
+
+            def read_ids(relative_path):
+                with gzip.open(output_dir / relative_path, "rt", encoding="utf-8") as stream:
+                    return [json.loads(line)["id"] for line in stream]
+
+            self.assertEqual(read_ids("raw/train.jsonl.gz"), ["first", "other", "copy"])
+            self.assertEqual(read_ids("minhashlsh/train.jsonl.gz"), ["first", "other"])
+            self.assertEqual(read_ids("lshbloom/train.jsonl.gz"), ["first", "other"])
+            self.assertEqual(
+                json.loads((output_dir / "manifest.json").read_text()), manifest
+            )
+
+        self.assertEqual(manifest["variants"]["raw"]["token_count"], 12)
+        self.assertEqual(manifest["variants"]["minhashlsh"]["token_count"], 8)
+        self.assertEqual(manifest["variants"]["lshbloom"]["removed_ids"], ["copy"])
+        self.assertEqual(manifest["agreement"]["differing_ids"], [])
+        self.assertTrue(manifest["training_gate"]["passes"])
+        for name in ("raw", "minhashlsh", "lshbloom"):
+            self.assertEqual(len(manifest["variants"][name]["sha256"]), 64)
+            self.assertGreater(manifest["variants"][name]["compressed_bytes"], 0)
+
+    def test_prepare_does_not_publish_partial_files_for_wrong_count(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            input_path = root / "input.jsonl.gz"
+            with gzip.open(input_path, "wt", encoding="utf-8") as stream:
+                stream.write(
+                    json.dumps(
+                        {"id": "only", "source": "s2orc/train", "text": "alpha beta"}
+                    )
+                    + "\n"
+                )
+
+            output_dir = root / "output"
+            with self.assertRaisesRegex(ValueError, "expected 2 documents"):
+                prepare_variants(
+                    input_path=input_path,
+                    output_dir=output_dir,
+                    config=DedupConfig(expected_documents=2, num_perm=32),
+                )
+
+            self.assertFalse((output_dir / "raw/train.jsonl.gz").exists())
+            self.assertFalse((output_dir / "manifest.json").exists())
 
 
 if __name__ == "__main__":
