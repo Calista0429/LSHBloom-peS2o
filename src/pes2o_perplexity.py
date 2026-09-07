@@ -13,15 +13,21 @@ from typing import Any, Callable, Iterable, Iterator
 SUPPORTED_SOURCES = {"s2orc", "s2ag"}
 
 
+def source_family(source: str) -> str:
+    family = source.split("/", maxsplit=1)[0]
+    if family not in SUPPORTED_SOURCES:
+        raise ValueError(f"unsupported source {source}")
+    return family
+
+
 def validate_record(record: dict, expected_source: str | None = None) -> dict:
     if not isinstance(record, dict):
         raise ValueError("each record must be a JSON object")
     for key in ("id", "source", "text"):
         if not isinstance(record.get(key), str) or not record[key]:
             raise ValueError(f"record field {key!r} must be a non-empty string")
-    if record["source"] not in SUPPORTED_SOURCES:
-        raise ValueError(f"unsupported source {record['source']}")
-    if expected_source is not None and record["source"] != expected_source:
+    record_source = source_family(record["source"])
+    if expected_source is not None and record_source != source_family(expected_source):
         raise ValueError(
             f"expected source {expected_source}, received {record['source']}"
         )
@@ -64,7 +70,7 @@ def collect_source_records(
 
     for url in urls:
         for record in iter_jsonl_gz(url):
-            source = record["source"]
+            source = source_family(record["source"])
             if source not in records:
                 continue
             limit = limits[source]

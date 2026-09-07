@@ -143,6 +143,11 @@ class CoreTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "field 'text'"):
             validate_record({"id": "x", "source": "s2ag", "text": ""})
 
+    def test_validate_record_accepts_validation_source_suffix(self):
+        record = {"id": "x", "source": "s2orc/valid", "text": "valid"}
+
+        self.assertIs(validate_record(record, "s2orc"), record)
+
     @patch("urllib.request.urlopen")
     def test_iter_jsonl_gz_streams_valid_records(self, urlopen):
         records = [
@@ -178,6 +183,20 @@ class CoreTests(unittest.TestCase):
 
         self.assertEqual([record["id"] for record in result["s2ag"]], ["a1", "a2"])
         self.assertEqual([record["id"] for record in result["s2orc"]], ["o1"])
+
+    @patch("src.pes2o_perplexity.iter_jsonl_gz")
+    def test_collect_source_records_routes_validation_source_suffixes(self, stream):
+        stream.side_effect = [
+            iter([{"id": "a1", "source": "s2ag/valid", "text": "a"}]),
+            iter([{"id": "o1", "source": "s2orc/valid", "text": "b"}]),
+        ]
+
+        result = collect_source_records(
+            ["first.gz", "second.gz"], {"s2ag": 1, "s2orc": 1}
+        )
+
+        self.assertEqual(result["s2ag"][0]["id"], "a1")
+        self.assertEqual(result["s2orc"][0]["id"], "o1")
 
     def test_packing_adds_eos_and_masks_final_padding(self):
         records = [
