@@ -1,6 +1,8 @@
 import gzip
 import json
 import math
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -109,6 +111,18 @@ class FakeTokenizer:
 
 
 class PrepareVariantsTests(unittest.TestCase):
+    def test_cli_can_run_directly_from_repository_root(self):
+        root = Path(__file__).resolve().parents[1]
+        result = subprocess.run(
+            [sys.executable, "scripts/prepare_pes2o_variants.py", "--help"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Create Raw, MinHashLSH", result.stdout)
+
     def test_prepare_writes_valid_variants_and_manifest(self):
         records = [
             {"id": "first", "source": "s2orc/train", "text": "alpha beta gamma"},
