@@ -100,6 +100,13 @@ class TrainingNotebookTests(unittest.TestCase):
         ):
             self.assertIn(required, code)
 
+    def test_fp16_training_keeps_model_parameters_in_fp32(self):
+        code = self.combined_code()
+
+        self.assertIn("torch_dtype=torch.float32", code)
+        self.assertNotIn("torch_dtype=torch.float16", code)
+        self.assertIn('with torch.autocast("cuda", dtype=torch.float16):', code)
+
     def test_generator_is_deterministic(self):
         before = NOTEBOOK_PATH.read_bytes()
         result = subprocess.run(

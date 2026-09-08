@@ -269,7 +269,7 @@ run = wandb.init(
 
 model = AutoModelForCausalLM.from_pretrained(
     CONFIG["model_id"],
-    torch_dtype=torch.float16,
+    torch_dtype=torch.float32,
 ).to("cuda")
 model.config.use_cache = False
 model.gradient_checkpointing_enable()
@@ -277,7 +277,8 @@ model.train()
 
 smoke_batch = causal_lm_collator([train_dataset[0]])
 smoke_batch = {key: value.to("cuda") for key, value in smoke_batch.items()}
-smoke_output = model(**smoke_batch)
+with torch.autocast("cuda", dtype=torch.float16):
+    smoke_output = model(**smoke_batch)
 if not torch.isfinite(smoke_output.loss):
     raise RuntimeError(f"Smoke test loss is not finite: {smoke_output.loss.item()}")
 smoke_output.loss.backward()
