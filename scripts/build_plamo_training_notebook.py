@@ -36,7 +36,7 @@ def build_notebook():
 
 This notebook trains one data variant per run: `raw`, `minhashlsh`, or `lshbloom`. Every run uses exactly 24,999,936 PLaMo tokenizer tokens, so the training-data deduplication method is the only experimental variable.
 
-PLaMo 2 uses custom Mamba kernels with strict dependency requirements. Before connecting, select **Runtime > Change runtime type**, choose a **V100 GPU**, and choose the **2025.07 past runtime (Python 3.11)**. The setup cell installs all pinned dependencies and restarts the runtime once. After reconnection, run all cells again.
+PLaMo 2 uses custom Mamba kernels with strict dependency requirements. Before connecting, select **Runtime > Change runtime type**, choose an **A100 GPU**, and choose the **2025.07 past runtime (Python 3.11)**. The setup cell installs all pinned dependencies and restarts the runtime once. After reconnection, run all cells again.
 
 Add `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `WANDB_API_KEY` to Colab Secrets. Temporary AWS credentials also require `AWS_SESSION_TOKEN`. Use a fresh runtime for each variant.
 """
@@ -211,7 +211,7 @@ ALLOWED_VARIANTS = {"raw", "minhashlsh", "lshbloom"}
 CONFIG = {
     "model_id": "pfnet/plamo-2-1b",
     "model_revision": "92c75fd6eea9018bcb9c33ee8921589febe071fa",
-    "required_gpu_substring": "V100",
+    "required_gpu_substring": "A100",
     "torch_version": "2.5.1",
     "transformers_version": "4.57.1",
     "mamba_ssm_version": "2.2.4",
@@ -225,7 +225,9 @@ CONFIG = {
     "warmup_ratio": 0.03,
     "weight_decay": 0.1,
     "max_grad_norm": 1.0,
-    "fp16": True,
+    "compute_dtype": "bfloat16",
+    "fp16": False,
+    "bf16": True,
     "seed": 42,
     "save_steps": 250,
     "logging_steps": 10,
@@ -259,7 +261,9 @@ if not torch.cuda.is_available():
     raise RuntimeError("CUDA is unavailable. Select a GPU runtime in Colab.")
 gpu_name = torch.cuda.get_device_name(0)
 if CONFIG["required_gpu_substring"] not in gpu_name:
-    raise RuntimeError(f"This experiment requires a V100; received {gpu_name}")
+    raise RuntimeError(f"This experiment requires an A100; received {gpu_name}")
+if not torch.cuda.is_bf16_supported():
+    raise RuntimeError(f"BF16 is unavailable on {gpu_name}")
 
 random.seed(CONFIG["seed"])
 np.random.seed(CONFIG["seed"])
@@ -383,7 +387,7 @@ print("Optimizer updates:", math.ceil(len(train_dataset) / CONFIG["gradient_accu
         markdown_cell(
             """## 3. Start W&B and run a full forward/backward smoke test
 
-PLaMo is loaded with its pinned remote model code. Parameters remain FP32 while V100 computation uses FP16 autocast. The smoke test uses a complete 2,048-token sequence and runs backward before the long training starts.
+PLaMo is loaded with its pinned remote model code. Parameters remain FP32 while A100 computation uses BF16 autocast. BF16 has the exponent range needed to avoid the FP16 overflow observed with this model. The smoke test uses a complete 2,048-token sequence and checks both the loss and gradient norm before the long training starts.
 """
         ),
         code_cell(
@@ -418,23 +422,30 @@ smoke_batch = {
     for key, value in causal_lm_collator([train_dataset[0]]).items()
 }
 torch.cuda.reset_peak_memory_stats()
-with torch.autocast("cuda", dtype=torch.float16):
+with torch.autocast("cuda", dtype=torch.bfloat16):
     smoke_output = model(**smoke_batch)
 if not torch.isfinite(smoke_output.loss):
     raise RuntimeError(f"Smoke test loss is not finite: {smoke_output.loss.item()}")
 smoke_output.loss.backward()
+smoke_grad_norm = torch.nn.utils.clip_grad_norm_(
+    model.parameters(), max_norm=float("inf")
+)
+if not torch.isfinite(smoke_grad_norm):
+    raise RuntimeError(f"Smoke test gradient norm is not finite: {smoke_grad_norm.item()}")
 smoke_peak_bytes = torch.cuda.max_memory_allocated()
 model.zero_grad(set_to_none=True)
 wandb.log({
     "smoke_test/passed": 1,
     "smoke_test/loss": smoke_output.loss.item(),
+    "smoke_test/gradient_norm": smoke_grad_norm.item(),
     "smoke_test/peak_cuda_bytes": smoke_peak_bytes,
 })
 print(
     f"Smoke test passed: loss={smoke_output.loss.item():.4f}, "
+    f"gradient_norm={smoke_grad_norm.item():.4f}, "
     f"peak GPU memory={smoke_peak_bytes / (1024**3):.2f} GiB"
 )
-del smoke_batch, smoke_output
+del smoke_batch, smoke_output, smoke_grad_norm
 gc.collect()
 torch.cuda.empty_cache()
 """
@@ -442,7 +453,7 @@ torch.cuda.empty_cache()
         markdown_cell(
             """## 4. Continue pretraining and persist the final checkpoint
 
-All three variants use the same 24,999,936-token budget and schedule. Adafactor is used for all three PLaMo runs because a full FP32 AdamW state does not fit reliably on a 16 GB V100. The final model is uploaded to S3 immediately after training, before validation begins.
+All three variants use the same 24,999,936-token budget and schedule. Adafactor is used for all three PLaMo runs, and BF16 computation is used with FP32 model parameters for numerical stability. The final model is uploaded to S3 immediately after training, before validation begins.
 """
         ),
         code_cell(
@@ -458,6 +469,7 @@ All three variants use the same 24,999,936-token budget and schedule. Adafactor 
     weight_decay=CONFIG["weight_decay"],
     max_grad_norm=CONFIG["max_grad_norm"],
     fp16=CONFIG["fp16"],
+    bf16=CONFIG["bf16"],
     gradient_checkpointing=True,
     logging_steps=CONFIG["logging_steps"],
     logging_first_step=True,
@@ -515,7 +527,7 @@ torch.cuda.empty_cache()
         markdown_cell(
             """## 5. Evaluate the same 1,000-document peS2o validation sample
 
-The fixed sample contains 320 S2ORC documents and 680 S2AG documents. The validation files are pinned to an immutable peS2o revision. Evaluation uses FP16 and batch size 1 for V100 memory safety.
+The fixed sample contains 320 S2ORC documents and 680 S2AG documents. The validation files are pinned to an immutable peS2o revision. Evaluation uses BF16 autocast and batch size 1 on the A100.
 """
         ),
         code_cell(
@@ -542,21 +554,21 @@ def log_eval_progress(metrics):
     })
 
 
-model.to(dtype=torch.float16)
 model.eval()
 source_results = {}
 for source in ("s2orc", "s2ag"):
-    source_results[source] = evaluate_source(
-        model=model,
-        packed_sequences=iter_packed_sequences(
-            records_by_source[source], tokenizer, CONFIG["sequence_length"]
-        ),
-        source=source,
-        batch_size=CONFIG["eval_batch_size"],
-        device="cuda",
-        log_every_steps=25,
-        progress_callback=log_eval_progress,
-    )
+    with torch.autocast("cuda", dtype=torch.bfloat16):
+        source_results[source] = evaluate_source(
+            model=model,
+            packed_sequences=iter_packed_sequences(
+                records_by_source[source], tokenizer, CONFIG["sequence_length"]
+            ),
+            source=source,
+            batch_size=CONFIG["eval_batch_size"],
+            device="cuda",
+            log_every_steps=25,
+            progress_callback=log_eval_progress,
+        )
     print(
         f"{source}: loss={source_results[source]['loss']:.4f}, "
         f"PPL={source_results[source]['perplexity']:.4f}"
@@ -654,7 +666,7 @@ Compare `eval/overall_perplexity`, `eval/s2orc_perplexity`, `eval/s2ag_perplexit
         "cells": cells,
         "metadata": {
             "accelerator": "GPU",
-            "colab": {"gpuType": "V100", "provenance": []},
+            "colab": {"gpuType": "A100", "provenance": []},
             "kernelspec": {
                 "display_name": "Python 3",
                 "language": "python",

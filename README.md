@@ -73,7 +73,7 @@ counts in the source manifest as PLaMo token counts.
 
 Open
 [`notebooks/plamo2_1b_pes2o_continued_pretraining.ipynb`](notebooks/plamo2_1b_pes2o_continued_pretraining.ipynb)
-in Colab. Select a V100 and the `2025.07` past runtime with Python 3.11. The
+in Colab. Select an A100 and the `2025.07` past runtime with Python 3.11. The
 first setup run installs every pinned PLaMo dependency and restarts Colab once;
 after reconnection, run all cells again. The setup cell keeps NumPy at the
 runtime's native `2.0.2` version and checks the NumPy, Transformers, and custom
@@ -85,10 +85,12 @@ kernel imports before downloading data. Then run one variant per fresh runtime:
 
 The model and remote model code are pinned to Hugging Face revision
 `92c75fd6eea9018bcb9c33ee8921589febe071fa`. All three runs use Adafactor,
-FP16 computation, gradient checkpointing, the same learning-rate schedule, and
-seed `42`. Adafactor keeps the full-model optimizer state within a 16 GB V100;
-this model-specific optimizer choice means absolute PLaMo and Qwen training
-results should not be interpreted as a controlled architecture comparison.
+BF16 computation with FP32 model parameters, gradient checkpointing, the same
+learning-rate schedule, and seed `42`. BF16 avoids the non-finite forward loss
+observed with FP16 on PLaMo 2 while retaining mixed-precision execution on the
+A100. This model-specific optimizer choice means absolute PLaMo and Qwen
+training results should not be interpreted as a controlled architecture
+comparison.
 
 Final PLaMo checkpoints and result JSON files are stored under:
 

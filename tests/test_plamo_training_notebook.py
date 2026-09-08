@@ -33,7 +33,7 @@ class PlamoTrainingNotebookTests(unittest.TestCase):
         notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
         self.assertEqual(notebook["nbformat"], 4)
         self.assertEqual(notebook["metadata"]["accelerator"], "GPU")
-        self.assertEqual(notebook["metadata"]["colab"]["gpuType"], "V100")
+        self.assertEqual(notebook["metadata"]["colab"]["gpuType"], "A100")
         for index, source in enumerate(code_cells()):
             compile(source, f"plamo-cell-{index}", "exec")
         self.assertIsNone(re.search(r"[\u3400-\u9fff]", NOTEBOOK.read_text()))
@@ -44,7 +44,7 @@ class PlamoTrainingNotebookTests(unittest.TestCase):
         for required in (
             '"model_id": "pfnet/plamo-2-1b"',
             '"model_revision": "92c75fd6eea9018bcb9c33ee8921589febe071fa"',
-            '"required_gpu_substring": "V100"',
+            '"required_gpu_substring": "A100"',
             'trust_remote_code=True',
             '"torch_version": "2.5.1"',
             '"transformers_version": "4.57.1"',
@@ -69,6 +69,25 @@ class PlamoTrainingNotebookTests(unittest.TestCase):
             setup.rindex('f"mamba-ssm=={REQUIRED[\'mamba_ssm_version\']}"'),
             setup.index("os.kill(os.getpid(), 9)"),
         )
+
+    def test_uses_a100_bfloat16_compute_with_fp32_parameters(self):
+        code = "\n".join(code_cells())
+
+        for required in (
+            '"required_gpu_substring": "A100"',
+            '"compute_dtype": "bfloat16"',
+            '"fp16": False',
+            '"bf16": True',
+            'with torch.autocast("cuda", dtype=torch.bfloat16):',
+            'bf16=CONFIG["bf16"]',
+            "trainer = Trainer(",
+            "torch.cuda.is_bf16_supported()",
+            "smoke_grad_norm",
+        ):
+            self.assertIn(required, code)
+
+        self.assertIn("torch_dtype=torch.float32", code)
+        self.assertNotIn("model.to(dtype=torch.float16)", code)
 
     def test_keeps_the_equal_twenty_five_million_token_protocol(self):
         code = "\n".join(code_cells())
