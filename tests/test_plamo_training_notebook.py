@@ -55,6 +55,21 @@ class PlamoTrainingNotebookTests(unittest.TestCase):
         ):
             self.assertIn(required, code)
 
+    def test_restarts_only_after_every_dependency_is_installed(self):
+        setup = code_cells()[0]
+
+        self.assertIn('"numpy_version": "2.0.2"', setup)
+        self.assertIn("SETUP_MARKER", setup)
+        self.assertIn("environment_matches()", setup)
+        self.assertIn('"--no-deps"', setup)
+        self.assertIn("import numpy.rec", setup)
+        self.assertIn("from transformers import AutoModelForCausalLM", setup)
+        self.assertEqual(setup.count("os.kill(os.getpid(), 9)"), 1)
+        self.assertLess(
+            setup.rindex('f"mamba-ssm=={REQUIRED[\'mamba_ssm_version\']}"'),
+            setup.index("os.kill(os.getpid(), 9)"),
+        )
+
     def test_keeps_the_equal_twenty_five_million_token_protocol(self):
         code = "\n".join(code_cells())
 

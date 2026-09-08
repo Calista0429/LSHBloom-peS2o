@@ -74,8 +74,10 @@ counts in the source manifest as PLaMo token counts.
 Open
 [`notebooks/plamo2_1b_pes2o_continued_pretraining.ipynb`](notebooks/plamo2_1b_pes2o_continued_pretraining.ipynb)
 in Colab. Select a V100 and the `2025.07` past runtime with Python 3.11. The
-first setup run installs the PLaMo-compatible PyTorch and restarts Colab; after
-reconnection, run all cells again. Then run one variant per fresh runtime:
+first setup run installs every pinned PLaMo dependency and restarts Colab once;
+after reconnection, run all cells again. The setup cell keeps NumPy at the
+runtime's native `2.0.2` version and checks the NumPy, Transformers, and custom
+kernel imports before downloading data. Then run one variant per fresh runtime:
 
 1. `VARIANT = "raw"`
 2. `VARIANT = "minhashlsh"`

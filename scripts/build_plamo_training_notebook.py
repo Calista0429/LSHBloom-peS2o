@@ -36,7 +36,7 @@ def build_notebook():
 
 This notebook trains one data variant per run: `raw`, `minhashlsh`, or `lshbloom`. Every run uses exactly 24,999,936 PLaMo tokenizer tokens, so the training-data deduplication method is the only experimental variable.
 
-PLaMo 2 uses custom Mamba kernels with strict dependency requirements. Before connecting, select **Runtime > Change runtime type**, choose a **V100 GPU**, and choose the **2025.07 past runtime (Python 3.11)**. The setup cell installs PyTorch 2.5.1 and restarts the runtime once. After reconnection, run all cells again.
+PLaMo 2 uses custom Mamba kernels with strict dependency requirements. Before connecting, select **Runtime > Change runtime type**, choose a **V100 GPU**, and choose the **2025.07 past runtime (Python 3.11)**. The setup cell installs all pinned dependencies and restarts the runtime once. After reconnection, run all cells again.
 
 Add `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `WANDB_API_KEY` to Colab Secrets. Temporary AWS credentials also require `AWS_SESSION_TOKEN`. Use a fresh runtime for each variant.
 """
@@ -47,16 +47,27 @@ import importlib.metadata
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 
 REQUIRED = {
     "torch_version": "2.5.1",
     "transformers_version": "4.57.1",
     "accelerate_version": "1.10.1",
-    "numpy_version": "1.26.4",
+    "numpy_version": "2.0.2",
     "numba_version": "0.60.0",
     "mamba_ssm_version": "2.2.4",
     "causal_conv1d_version": "1.4.0",
+}
+SETUP_MARKER = Path("/content/.plamo2_dependency_setup_v2")
+EXACT_DISTRIBUTIONS = {
+    "torch": REQUIRED["torch_version"],
+    "transformers": REQUIRED["transformers_version"],
+    "accelerate": REQUIRED["accelerate_version"],
+    "numpy": REQUIRED["numpy_version"],
+    "numba": REQUIRED["numba_version"],
+    "mamba-ssm": REQUIRED["mamba_ssm_version"],
+    "causal-conv1d": REQUIRED["causal_conv1d_version"],
 }
 
 if sys.version_info[:2] != (3, 11):
@@ -65,59 +76,102 @@ if sys.version_info[:2] != (3, 11):
         f"then reconnect. Current Python: {sys.version.split()[0]}"
     )
 
-try:
-    installed_torch = importlib.metadata.version("torch").split("+")[0]
-except importlib.metadata.PackageNotFoundError:
-    installed_torch = None
+def installed_version(distribution):
+    try:
+        return importlib.metadata.version(distribution).split("+")[0]
+    except importlib.metadata.PackageNotFoundError:
+        return None
 
-if installed_torch != REQUIRED["torch_version"]:
-    subprocess.run(
-        [sys.executable, "-m", "pip", "uninstall", "-y", "torch", "torchvision", "torchaudio"],
-        check=False,
+
+def environment_matches():
+    return all(
+        installed_version(distribution) == expected
+        for distribution, expected in EXACT_DISTRIBUTIONS.items()
     )
+
+
+if not SETUP_MARKER.exists() or not environment_matches():
+    if installed_version("torch") != REQUIRED["torch_version"]:
+        subprocess.run(
+            [sys.executable, "-m", "pip", "uninstall", "-y", "torch", "torchvision", "torchaudio"],
+            check=False,
+        )
+        subprocess.check_call([
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-q",
+            f"torch=={REQUIRED['torch_version']}",
+            "--index-url",
+            "https://download.pytorch.org/whl/cu124",
+        ])
+
+    # Reinstall NumPy even when its metadata matches. This repairs a runtime that
+    # previously loaded a different NumPy version before pip changed the files.
     subprocess.check_call([
         sys.executable,
         "-m",
         "pip",
         "install",
         "-q",
-        f"torch=={REQUIRED['torch_version']}",
-        "--index-url",
-        "https://download.pytorch.org/whl/cu124",
+        "--force-reinstall",
+        "--no-deps",
+        f"numpy=={REQUIRED['numpy_version']}",
     ])
-    print("PyTorch installed. Colab will restart; reconnect and run all cells again.")
+    subprocess.check_call([
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "-q",
+        f"transformers=={REQUIRED['transformers_version']}",
+        f"accelerate=={REQUIRED['accelerate_version']}",
+        f"numba=={REQUIRED['numba_version']}",
+        "wandb==0.21.1",
+        "boto3>=1.35,<2",
+        "packaging>=24,<26",
+        "ninja>=1.11,<2",
+        "wheel",
+    ])
+
+    # Limit extension compilation memory on the Colab VM.
+    os.environ["MAX_JOBS"] = "2"
+    subprocess.check_call([
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "-q",
+        "--force-reinstall",
+        "--no-build-isolation",
+        "--no-deps",
+        f"causal-conv1d=={REQUIRED['causal_conv1d_version']}",
+        f"mamba-ssm=={REQUIRED['mamba_ssm_version']}",
+    ])
+    SETUP_MARKER.write_text("installed", encoding="utf-8")
+    print("All PLaMo dependencies are installed. Colab will restart once.")
     os.kill(os.getpid(), 9)
 
-subprocess.check_call([
-    sys.executable,
-    "-m",
-    "pip",
-    "install",
-    "-q",
-    f"transformers=={REQUIRED['transformers_version']}",
-    f"accelerate=={REQUIRED['accelerate_version']}",
-    f"numpy=={REQUIRED['numpy_version']}",
-    f"numba=={REQUIRED['numba_version']}",
-    "wandb==0.21.1",
-    "boto3>=1.35,<2",
-    "packaging>=24,<26",
-    "ninja>=1.11,<2",
-    "wheel",
-])
+# Import the same modules used by training before any data or model download.
+try:
+    import numpy as setup_numpy
+    import numpy.rec
+    import causal_conv1d as setup_causal_conv1d
+    import mamba_ssm as setup_mamba_ssm
+    from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
+except Exception as error:
+    SETUP_MARKER.unlink(missing_ok=True)
+    raise RuntimeError(
+        "The dependency self-check failed. Disconnect and delete this Colab "
+        "runtime, select 2025.07 again, and rerun the notebook."
+    ) from error
 
-# Limit extension compilation memory on the Colab VM.
-os.environ["MAX_JOBS"] = "2"
-subprocess.check_call([
-    sys.executable,
-    "-m",
-    "pip",
-    "install",
-    "-q",
-    "--no-build-isolation",
-    f"causal-conv1d=={REQUIRED['causal_conv1d_version']}",
-    f"mamba-ssm=={REQUIRED['mamba_ssm_version']}",
-])
-print("PLaMo dependencies installed.")
+if setup_numpy.__version__ != REQUIRED["numpy_version"]:
+    raise RuntimeError(
+        f"Expected NumPy {REQUIRED['numpy_version']}, received {setup_numpy.__version__}"
+    )
+print("PLaMo dependency self-check passed.")
 """
         ),
         code_cell(training_core, tags=["training-core-library"]),
