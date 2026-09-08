@@ -46,9 +46,9 @@ These are base-model checkpoints, so the harness must score answer
 continuations directly without a system prompt or chat formatting. No optimizer,
 backward pass, or parameter update is created.
 
-Before the full run, the notebook evaluates exactly 10 SciQ test examples for
-all three models. These smoke-test scores only validate the pipeline and must
-not be presented as experimental results.
+Before each model's full run, the notebook evaluates exactly 10 SciQ test
+examples from that model. These smoke-test scores only validate the pipeline
+and must not be presented as experimental results.
 
 The SciQ task definition follows the official
 [`lm-evaluation-harness` configuration](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/tasks/sciq/sciq.yaml).
@@ -80,9 +80,9 @@ inconclusive.
 Deliver one standalone Google Colab notebook. The user runs it from top to
 bottom on a V100:
 
-1. Add `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, optional
-   `AWS_SESSION_TOKEN`, `AWS_DEFAULT_REGION`, and `WANDB_API_KEY` to Colab
-   userdata.
+1. Add `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `WANDB_API_KEY` to
+   Colab userdata. Temporary AWS credentials also need `AWS_SESSION_TOKEN`;
+   `AWS_DEFAULT_REGION` is optional and defaults to `ap-northeast-1`.
 2. Install pinned evaluation dependencies.
 3. Read secrets through `google.colab.userdata.get` without printing them.
 4. Confirm CUDA is available and record the GPU name.
