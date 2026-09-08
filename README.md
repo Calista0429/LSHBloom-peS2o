@@ -63,6 +63,37 @@ Each dataset variant was used to continue pretraining
 The final training losses were 2.3604 for Raw, 2.3620 for MinHashLSH, and
 2.3614 for LSHBloom.
 
+## PLaMo 2 1B Equal-Token Replication
+
+The PLaMo replication preserves the original equal-compute data protocol:
+Raw, MinHashLSH, and LSHBloom each provide exactly `24,999,936` model-input
+tokens (`12,207` sequences of length `2,048`). The notebook tokenizes each
+source file again with the PLaMo tokenizer. It does not treat the Qwen token
+counts in the source manifest as PLaMo token counts.
+
+Open
+[`notebooks/plamo2_1b_pes2o_continued_pretraining.ipynb`](notebooks/plamo2_1b_pes2o_continued_pretraining.ipynb)
+in Colab. Select a V100 and the `2025.07` past runtime with Python 3.11. The
+first setup run installs the PLaMo-compatible PyTorch and restarts Colab; after
+reconnection, run all cells again. Then run one variant per fresh runtime:
+
+1. `VARIANT = "raw"`
+2. `VARIANT = "minhashlsh"`
+3. `VARIANT = "lshbloom"`
+
+The model and remote model code are pinned to Hugging Face revision
+`92c75fd6eea9018bcb9c33ee8921589febe071fa`. All three runs use Adafactor,
+FP16 computation, gradient checkpointing, the same learning-rate schedule, and
+seed `42`. Adafactor keeps the full-model optimizer state within a 16 GB V100;
+this model-specific optimizer choice means absolute PLaMo and Qwen training
+results should not be interpreted as a controlled architecture comparison.
+
+Final PLaMo checkpoints and result JSON files are stored under:
+
+```text
+s3://calista-bucket/pes2o/v2/experiments/pilot-5000/plamo-2-1b-25m/checkpoints/<variant>/
+```
+
 ## SciQ Evaluation
 
 The three final checkpoints were evaluated with
@@ -144,6 +175,7 @@ and changes relative to Raw.
 
 - `notebooks/qwen_pes2o_sciq_evaluation.ipynb`: complete Colab evaluation
 - `notebooks/qwen_pes2o_continued_pretraining.ipynb`: continued-pretraining run
+- `notebooks/plamo2_1b_pes2o_continued_pretraining.ipynb`: PLaMo equal-25M-token run
 - `notebooks/qwen_pes2o_efficiency_training.ipynb`: full-corpus checkpoint curves
 - `notebooks/qwen_pes2o_efficiency_curves.ipynb`: three-variant curve comparison
 - `src/sciq_evaluation.py`: SciQ result validation and comparison helpers
