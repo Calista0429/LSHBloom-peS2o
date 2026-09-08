@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import sys
 import unittest
@@ -45,6 +46,8 @@ class EfficiencyNotebookTests(unittest.TestCase):
 
         self.assertIn("build_full_training_plan", code)
         self.assertIn('manifest["variants"][name]["token_count"]', code)
+        self.assertIn('"model_revision":', code)
+        self.assertIn('revision=CONFIG["model_revision"]', code)
         self.assertIn('eval_strategy="steps"', code)
         self.assertIn('eval_steps=CONFIG["curve_interval_steps"]', code)
         self.assertIn('save_steps=CONFIG["curve_interval_steps"]', code)
@@ -52,9 +55,35 @@ class EfficiencyNotebookTests(unittest.TestCase):
         self.assertIn('CONFIG["curve_validation_sequences"]', code)
         self.assertIn("simple_evaluate(", code)
         self.assertIn('CONFIG["sciq_examples"]', code)
+        self.assertIn('CONFIG["sciq_smoke_examples"]', code)
+        self.assertIn('"sciq_smoke_examples": 10', code)
+        self.assertIn('bootstrap_iters=100', code)
+        self.assertIn('"smoke/sciq_examples": smoke_metrics["examples"]', code)
+        self.assertIn('"required_gpu_substring": "V100"', code)
+        self.assertIn('if CONFIG["required_gpu_substring"] not in gpu_name:', code)
+        self.assertGreaterEqual(code.count("torch.cuda.synchronize()"), 2)
         self.assertIn("merge_curve_measurements", code)
+        self.assertNotIn("resolve/main", code)
+        self.assertIn("VALIDATION_REVISION", code)
+        self.assertIn("probe_sha256", code)
+        self.assertIn("experiment_fingerprint", code)
+        self.assertIn("source_manifest_sha256", code)
+        self.assertIn("SCIQ_REVISION", code)
+        self.assertIn('"dataset_kwargs": {"revision": SCIQ_REVISION}', code)
+        self.assertIn('tasks=[SCIQ_TASK]', code)
+        self.assertIn('lr_scheduler_type="constant_with_warmup"', code)
+        self.assertIn('warmup_steps=CONFIG["warmup_steps"]', code)
+        self.assertNotIn('warmup_ratio=CONFIG["warmup_ratio"]', code)
+        self.assertIn("training-progress.json", code)
+        self.assertIn("sciq-progress.json", code)
+        self.assertGreaterEqual(code.count("s3.upload_file("), 5)
+        self.assertLess(
+            code.index('f"{S3_OUTPUT_PREFIX}final/{relative}"'),
+            code.index("sciq_rows = []"),
+        )
         self.assertIn("curve-results.json", code)
         self.assertIn("save_only_model=True", code)
+        self.assertIn('np.stack([feature["input_ids"] for feature in features])', code)
         self.assertIn(
             'data=[[row[column] for column in CURVE_COLUMNS] for row in curve_rows]',
             code,
@@ -72,6 +101,13 @@ class EfficiencyNotebookTests(unittest.TestCase):
         self.assertIn("efficiency-curves.png", code)
         self.assertIn("wandb.Image", code)
         self.assertIn("artifact.add_dir", code)
+        self.assertIn("validate_shared_experiment_results", code)
+
+    def test_new_notebooks_use_english_text_and_chart_labels(self):
+        han = re.compile(r"[\u3400-\u9fff]")
+        for path in (TRAIN_NOTEBOOK, PLOT_NOTEBOOK):
+            notebook_text = path.read_text(encoding="utf-8")
+            self.assertIsNone(han.search(notebook_text), path.name)
 
     def test_generators_are_deterministic(self):
         before = {

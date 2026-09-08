@@ -5,10 +5,12 @@ from pathlib import Path
 
 from src.efficiency_curves import (
     build_full_training_plan,
+    canonical_sha256,
     checkpoint_steps,
     merge_curve_measurements,
     tokens_at_step,
     validate_curve_rows,
+    validate_shared_experiment_results,
     write_curve_csv,
 )
 
@@ -99,6 +101,49 @@ class CheckpointAccountingTests(unittest.TestCase):
 
 
 class CurveResultTests(unittest.TestCase):
+    def test_accepts_only_results_with_the_same_verified_experiment_identity(self):
+        identity = {
+            "model_id": "Qwen/Qwen2.5-0.5B",
+            "seed": 42,
+            "validation_revision": "abc123",
+            "probe_sha256": "f" * 64,
+        }
+        fingerprint = canonical_sha256(identity)
+        results = [
+            {
+                "schema_version": 2,
+                "variant": variant,
+                "experiment_identity": identity,
+                "experiment_fingerprint": fingerprint,
+            }
+            for variant in ("raw", "minhashlsh", "lshbloom")
+        ]
+
+        self.assertEqual(
+            validate_shared_experiment_results(results),
+            fingerprint,
+        )
+
+    def test_rejects_mismatched_or_tampered_experiment_results(self):
+        identity = {"model_id": "Qwen/Qwen2.5-0.5B", "seed": 42}
+        fingerprint = canonical_sha256(identity)
+        results = [
+            {
+                "schema_version": 2,
+                "variant": variant,
+                "experiment_identity": identity,
+                "experiment_fingerprint": fingerprint,
+            }
+            for variant in ("raw", "minhashlsh", "lshbloom")
+        ]
+        results[2] = {
+            **results[2],
+            "experiment_identity": {**identity, "seed": 43},
+        }
+
+        with self.assertRaisesRegex(ValueError, "fingerprint"):
+            validate_shared_experiment_results(results)
+
     def test_merges_validation_and_sciq_measurements_by_variant_and_step(self):
         rows = merge_curve_measurements(
             [

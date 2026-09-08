@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import json
 import math
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -20,6 +22,55 @@ CURVE_COLUMNS = (
     "sciq_acc_norm_stderr",
     "sciq_examples",
 )
+
+
+def canonical_sha256(value: object) -> str:
+    """Return a stable SHA-256 for JSON-compatible experiment metadata."""
+    try:
+        encoded = json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise ValueError("value must contain only finite JSON-compatible data") from error
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def validate_shared_experiment_results(
+    results: Iterable[Mapping[str, object]],
+    expected_variants: Iterable[str] = VARIANTS,
+) -> str:
+    """Verify that separately produced variant results belong to one experiment."""
+    results = [dict(result) for result in results]
+    expected_variants = tuple(expected_variants)
+    if len(results) != len(expected_variants):
+        raise ValueError("one experiment result is required for every variant")
+
+    variants = [result.get("variant") for result in results]
+    if set(variants) != set(expected_variants) or len(set(variants)) != len(variants):
+        raise ValueError("experiment result variants do not match the expected variants")
+
+    verified = []
+    for result in results:
+        if result.get("schema_version") != 2:
+            raise ValueError("experiment results require schema_version 2")
+        identity = result.get("experiment_identity")
+        fingerprint = result.get("experiment_fingerprint")
+        if not isinstance(identity, Mapping) or not isinstance(fingerprint, str):
+            raise ValueError("experiment identity and fingerprint are required")
+        computed = canonical_sha256(identity)
+        if computed != fingerprint:
+            raise ValueError(
+                f"experiment fingerprint is invalid for variant {result.get('variant')}"
+            )
+        verified.append(fingerprint)
+
+    if len(set(verified)) != 1:
+        raise ValueError("experiment fingerprints differ across variants")
+    return verified[0]
 
 
 def _positive_integer(value: object, name: str) -> int:

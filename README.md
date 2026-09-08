@@ -174,7 +174,9 @@ one epoch over every complete 2,048-token sequence available in that variant.
 | LSHBloom | 14,039 | 28,751,872 | 1,106 |
 
 The deduplicated runs therefore use approximately 8.3% and 8.5% fewer
-training tokens than Raw. All other training hyperparameters remain fixed.
+training tokens than Raw. All other training hyperparameters remain fixed. A
+fixed 50-step warmup followed by a constant learning rate gives every variant
+the same learning rate at the same cumulative token count.
 
 Open
 [`notebooks/qwen_pes2o_efficiency_training.ipynb`](notebooks/qwen_pes2o_efficiency_training.ipynb)
@@ -195,15 +197,26 @@ test examples. It records:
 - SciQ accuracy and length-normalized accuracy;
 - SciQ standard errors.
 
-The final model and curve results are uploaded under:
+The Qwen Base model, peS2o validation files, and SciQ task dataset are pinned to
+immutable Hugging Face revisions. Each run records the source-manifest hash,
+validation-probe token hash, software versions, GPU model, and a shared
+experiment fingerprint. The plotting notebook refuses to combine results
+unless all three fingerprints match.
+
+The final model and curve results are uploaded to S3 under:
 
 ```text
 s3://calista-bucket/pes2o/v2/experiments/pilot-5000/efficiency/<variant>/
 ```
 
-Intermediate checkpoints remain local and are used only to obtain curve
-points. A run needs roughly 10 GB of temporary disk space. The model-only
-checkpoints cannot resume interrupted training.
+The final model and a training-progress record are uploaded before the longer
+SciQ sweep begins. Each completed SciQ checkpoint measurement is also uploaded
+to a progress file. Intermediate checkpoints remain local and are used only to
+obtain curve points. Keep at least 25 GB of temporary disk space free. The
+model-only checkpoints cannot resume interrupted training.
+
+W&B stores the training history and the small JSON/CSV evaluation artifact.
+The final model is stored once in S3 rather than duplicated in W&B.
 
 After all three training runs finish, open
 [`notebooks/qwen_pes2o_efficiency_curves.ipynb`](notebooks/qwen_pes2o_efficiency_curves.ipynb).

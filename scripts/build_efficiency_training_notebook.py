@@ -34,17 +34,17 @@ def code_cell(source, tags=None):
 def build_notebook():
     cells = [
         markdown_cell(
-            """# Qwen2.5-0.5B：peS2o 完整数据训练效率曲线
+            """# Qwen2.5-0.5B: peS2o Full-Corpus Training-Efficiency Curves
 
-这个 notebook 每次运行一个数据版本：`raw`、`minhashlsh` 或 `lshbloom`。与原来的固定 2,500 万 token 实验不同，本实验把当前版本的所有完整 2,048-token 序列训练一个 epoch。
+This notebook runs one data variant at a time: `raw`, `minhashlsh`, or `lshbloom`. Unlike the equal 25-million-token experiment, this experiment trains for one epoch over every complete 2,048-token sequence in the selected variant.
 
-训练期间每 250 个 optimizer step 在同一份固定 validation probe 上测一次 perplexity，并保存一个只包含模型权重的临时 checkpoint。训练结束后，对 Base 和全部 checkpoint 测完整 1,000 条 SciQ。最终得到随累计训练 token 和纯训练 GPU 时间变化的曲线数据。
+During training, every 250 optimizer steps the notebook evaluates the same fixed validation probe and saves a temporary model-only checkpoint. After training, it evaluates the Base model and every checkpoint on all 1,000 SciQ test examples. The output contains quality curves against cumulative training tokens and training-only GPU time.
 
-在 Colab 中选择 V100，设置 `AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY` 和 `WANDB_API_KEY` Secrets。临时 AWS 凭证还需要 `AWS_SESSION_TOKEN`。每次只修改 `VARIANT`，三个版本分别使用新的 runtime 运行。
+Select a V100 runtime in Colab and add `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `WANDB_API_KEY` to Colab Secrets. Temporary AWS credentials also require `AWS_SESSION_TOKEN`. Change only `VARIANT`, and use a fresh runtime for each of the three variants.
 """
         ),
         code_cell(
-            """# Install pinned experiment dependencies.
+            """# Install version-constrained experiment dependencies.
 import subprocess
 import sys
 
@@ -81,6 +81,7 @@ The only normal edit is `VARIANT`. The validation probe contains 128 fixed seque
             ),
             code_cell(
                 """import gc
+import hashlib
 import importlib.metadata
 import itertools
 import json
@@ -114,11 +115,13 @@ ALLOWED_VARIANTS = set(VARIANTS)
 
 CONFIG = {
     "model_id": "Qwen/Qwen2.5-0.5B",
+    "model_revision": "060db6499f32faf8b98477b0a26969ef7d8b9987",
+    "required_gpu_substring": "V100",
     "sequence_length": 2048,
     "per_device_train_batch_size": 1,
     "gradient_accumulation_steps": 8,
     "learning_rate": 5e-5,
-    "warmup_ratio": 0.03,
+    "warmup_steps": 50,
     "weight_decay": 0.1,
     "max_grad_norm": 1.0,
     "fp16": True,
@@ -129,10 +132,32 @@ CONFIG = {
     "full_validation_documents": {"s2orc": 320, "s2ag": 680},
     "eval_batch_size": 4,
     "sciq_batch_size": 8,
+    "sciq_smoke_examples": 10,
     "sciq_examples": 1000,
     "sciq_bootstrap_iters": 1000,
     "wandb_project": "lshbloom-pes2o",
     "wandb_group": "qwen2.5-0.5b-pes2o-dedup-full-efficiency",
+}
+SCIQ_REVISION = "2c94ad3e1aafab77146f384e23536f97a4849815"
+SCIQ_TASK = {
+    "task": "sciq",
+    "dataset_path": "allenai/sciq",
+    "dataset_name": None,
+    "dataset_kwargs": {"revision": SCIQ_REVISION},
+    "output_type": "multiple_choice",
+    "training_split": "train",
+    "validation_split": "validation",
+    "test_split": "test",
+    "doc_to_text": "{{support.lstrip()}}\\nQuestion: {{question}}\\nAnswer:",
+    "doc_to_target": 3,
+    "doc_to_choice": "{{[distractor1, distractor2, distractor3, correct_answer]}}",
+    "should_decontaminate": True,
+    "doc_to_decontamination_query": "{{support}} {{question}}",
+    "metric_list": [
+        {"metric": "acc", "aggregation": "mean", "higher_is_better": True},
+        {"metric": "acc_norm", "aggregation": "mean", "higher_is_better": True},
+    ],
+    "metadata": {"version": 1.0},
 }
 
 if VARIANT not in ALLOWED_VARIANTS:
@@ -141,6 +166,11 @@ if sum(CONFIG["curve_validation_sequences"].values()) != 128:
     raise RuntimeError("Curve validation probe must contain exactly 128 sequences")
 if not torch.cuda.is_available():
     raise RuntimeError("CUDA is unavailable. Select a GPU runtime in Colab.")
+gpu_name = torch.cuda.get_device_name(0)
+if CONFIG["required_gpu_substring"] not in gpu_name:
+    raise RuntimeError(
+        f"This experiment requires a comparable V100 runtime; received {gpu_name}"
+    )
 
 random.seed(CONFIG["seed"])
 np.random.seed(CONFIG["seed"])
@@ -193,10 +223,12 @@ FINAL_MODEL_DIR = WORK_DIR / "final"
 RESULTS_DIR = WORK_DIR / "results"
 CURVE_RESULT_PATH = RESULTS_DIR / "curve-results.json"
 CURVE_CSV_PATH = RESULTS_DIR / "curve-results.csv"
+TRAINING_PROGRESS_PATH = RESULTS_DIR / "training-progress.json"
+SCIQ_PROGRESS_PATH = RESULTS_DIR / "sciq-progress.json"
 WORK_DIR.mkdir(parents=True, exist_ok=True)
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-print("GPU:", torch.cuda.get_device_name(0))
+print("GPU:", gpu_name)
 print("Variant:", VARIANT)
 print("S3 output:", f"s3://{S3_BUCKET}/{S3_OUTPUT_PREFIX}")
 """
@@ -209,6 +241,7 @@ Only the incomplete tail shorter than 2,048 tokens is discarded. This is at most
             ),
             code_cell(
                 """s3.download_file(S3_BUCKET, f"{S3_SOURCE_PREFIX}manifest.json", str(MANIFEST_PATH))
+source_manifest_sha256 = _sha256(MANIFEST_PATH)
 manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
 token_counts = {
     name: int(manifest["variants"][name]["token_count"])
@@ -226,7 +259,9 @@ s3.download_file(
 if _sha256(DATA_PATH) != variant_info["sha256"]:
     raise RuntimeError("Dataset SHA-256 mismatch")
 
-tokenizer = AutoTokenizer.from_pretrained(CONFIG["model_id"], use_fast=True)
+tokenizer = AutoTokenizer.from_pretrained(
+    CONFIG["model_id"], revision=CONFIG["model_revision"], use_fast=True
+)
 packing = pack_jsonl_gz_to_memmap(
     input_path=DATA_PATH,
     output_path=MEMMAP_PATH,
@@ -263,9 +298,10 @@ The same document order and sequence counts are used in every variant run. Perpl
 """
             ),
             code_cell(
-                """VALIDATION_URLS = [
-    "https://huggingface.co/datasets/allenai/peS2o/resolve/main/data/v2/validation-00000-of-00002.json.gz",
-    "https://huggingface.co/datasets/allenai/peS2o/resolve/main/data/v2/validation-00001-of-00002.json.gz",
+                """VALIDATION_REVISION = "636a503e44a3ca1b58e01fb61eab0825cd574de0"
+VALIDATION_URLS = [
+    f"https://huggingface.co/datasets/allenai/peS2o/resolve/{VALIDATION_REVISION}/data/v2/validation-00000-of-00002.json.gz",
+    f"https://huggingface.co/datasets/allenai/peS2o/resolve/{VALIDATION_REVISION}/data/v2/validation-00001-of-00002.json.gz",
 ]
 validation_records = collect_source_records(
     VALIDATION_URLS,
@@ -285,6 +321,7 @@ class PackedListDataset:
 
 
 probe_sequences = []
+probe_sequence_hashes = {}
 for source in ("s2orc", "s2ag"):
     requested = CONFIG["curve_validation_sequences"][source]
     items = list(
@@ -300,17 +337,50 @@ for source in ("s2orc", "s2ag"):
             f"Validation probe has only {len(items)} {source} sequences; need {requested}"
         )
     probe_sequences.extend(items)
+    probe_sequence_hashes[source] = [
+        hashlib.sha256(
+            np.asarray(item["input_ids"], dtype="<u4").tobytes(order="C")
+        ).hexdigest()
+        for item in items
+    ]
 curve_eval_dataset = PackedListDataset(probe_sequences)
+probe_identity = {
+    "dataset": "allenai/peS2o",
+    "revision": VALIDATION_REVISION,
+    "sequence_token_sha256": probe_sequence_hashes,
+}
+probe_sha256 = canonical_sha256(probe_identity)
+
+environment_compatibility = {
+    "torch": torch.__version__,
+    "transformers": transformers.__version__,
+    "lm_eval": importlib.metadata.version("lm-eval"),
+    "gpu": gpu_name,
+}
+experiment_identity = {
+    "schema_version": 2,
+    "config": CONFIG,
+    "training_plan": training_plan,
+    "source_manifest_sha256": source_manifest_sha256,
+    "sciq_task": SCIQ_TASK,
+    "validation_probe": {
+        **probe_identity,
+        "probe_sha256": probe_sha256,
+    },
+    "environment": environment_compatibility,
+}
+experiment_fingerprint = canonical_sha256(experiment_identity)
 
 
 def causal_lm_collator(features):
-    input_ids = torch.tensor(
-        [feature["input_ids"] for feature in features], dtype=torch.long
-    )
-    labels = torch.tensor(
-        [feature.get("labels", feature["input_ids"]) for feature in features],
-        dtype=torch.long,
-    )
+    input_ids = torch.from_numpy(
+        np.stack([feature["input_ids"] for feature in features])
+    ).long()
+    labels = torch.from_numpy(
+        np.stack(
+            [feature.get("labels", feature["input_ids"]) for feature in features]
+        )
+    ).long()
     return {
         "input_ids": input_ids,
         "attention_mask": labels.ne(-100).long(),
@@ -319,6 +389,8 @@ def causal_lm_collator(features):
 
 
 print("Curve validation sequences:", len(curve_eval_dataset))
+print("Validation probe SHA-256:", probe_sha256)
+print("Experiment fingerprint:", experiment_fingerprint)
 """
             ),
             markdown_cell(
@@ -338,10 +410,51 @@ run = wandb.init(
         "variant": VARIANT,
         "training_plan": training_plan,
         "dataset_sha256": variant_info["sha256"],
+        "source_manifest_sha256": source_manifest_sha256,
+        "probe_sha256": probe_sha256,
+        "experiment_fingerprint": experiment_fingerprint,
         "packing": packing,
-        "gpu": torch.cuda.get_device_name(0),
+        "gpu": gpu_name,
     },
 )
+
+print("Running a 10-example SciQ smoke test before training")
+torch.cuda.reset_peak_memory_stats()
+smoke_started = time.perf_counter()
+smoke_result = simple_evaluate(
+    model="hf",
+    model_args={
+        "pretrained": CONFIG["model_id"],
+        "revision": CONFIG["model_revision"],
+        "dtype": "float16",
+    },
+    tasks=[SCIQ_TASK],
+    num_fewshot=0,
+    batch_size=CONFIG["sciq_batch_size"],
+    device="cuda:0",
+    limit=CONFIG["sciq_smoke_examples"],
+    bootstrap_iters=100,
+    log_samples=False,
+    apply_chat_template=False,
+    random_seed=CONFIG["seed"],
+    numpy_random_seed=CONFIG["seed"],
+    torch_random_seed=CONFIG["seed"],
+    fewshot_random_seed=CONFIG["seed"],
+)
+smoke_metrics = extract_sciq_metrics(
+    smoke_result,
+    variant=VARIANT,
+    stage="smoke",
+    elapsed_seconds=time.perf_counter() - smoke_started,
+    peak_cuda_bytes=torch.cuda.max_memory_allocated(),
+)
+run.log({
+    "smoke/sciq_examples": smoke_metrics["examples"],
+    "smoke/sciq_acc_norm": smoke_metrics["acc_norm"],
+})
+del smoke_result
+gc.collect()
+torch.cuda.empty_cache()
 
 
 class TrainingClockCallback(TrainerCallback):
@@ -354,10 +467,12 @@ class TrainingClockCallback(TrainerCallback):
         self.validation_by_step = {}
 
     def on_step_begin(self, args, state, control, **kwargs):
+        torch.cuda.synchronize()
         self.step_started = time.perf_counter()
 
     def on_step_end(self, args, state, control, **kwargs):
         if self.step_started is not None:
+            torch.cuda.synchronize()
             self.train_seconds += time.perf_counter() - self.step_started
             self.step_started = None
 
@@ -391,6 +506,7 @@ class TrainingClockCallback(TrainerCallback):
 
 model = AutoModelForCausalLM.from_pretrained(
     CONFIG["model_id"],
+    revision=CONFIG["model_revision"],
     torch_dtype=torch.float32,
 ).to("cuda")
 model.config.use_cache = False
@@ -409,8 +525,8 @@ training_args = TrainingArguments(
     per_device_eval_batch_size=CONFIG["eval_batch_size"],
     gradient_accumulation_steps=CONFIG["gradient_accumulation_steps"],
     learning_rate=CONFIG["learning_rate"],
-    lr_scheduler_type="cosine",
-    warmup_ratio=CONFIG["warmup_ratio"],
+    lr_scheduler_type="constant_with_warmup",
+    warmup_steps=CONFIG["warmup_steps"],
     weight_decay=CONFIG["weight_decay"],
     max_grad_norm=CONFIG["max_grad_norm"],
     fp16=CONFIG["fp16"],
@@ -469,6 +585,40 @@ if missing_validation_steps:
     raise RuntimeError(f"Missing validation measurements at steps {missing_validation_steps}")
 validation_rows = [clock.validation_by_step[step] for step in expected_steps]
 print(json.dumps(train_metrics, indent=2))
+
+# Persist the expensive training output before starting the long SciQ sweep.
+training_progress = {
+    "schema_version": 2,
+    "variant": VARIANT,
+    "experiment_identity": experiment_identity,
+    "experiment_fingerprint": experiment_fingerprint,
+    "variant_plan": variant_plan,
+    "packing": packing,
+    "train_metrics": train_metrics,
+    "curve_probe": {
+        "probe_sha256": probe_sha256,
+        "validation_rows": validation_rows,
+    },
+}
+TRAINING_PROGRESS_PATH.write_text(
+    json.dumps(training_progress, ensure_ascii=False, indent=2, allow_nan=False) + "\\n",
+    encoding="utf-8",
+)
+for local_path in FINAL_MODEL_DIR.rglob("*"):
+    if local_path.is_file():
+        relative = local_path.relative_to(FINAL_MODEL_DIR).as_posix()
+        s3.upload_file(
+            str(local_path),
+            S3_BUCKET,
+            f"{S3_OUTPUT_PREFIX}final/{relative}",
+        )
+s3.upload_file(
+    str(TRAINING_PROGRESS_PATH),
+    S3_BUCKET,
+    f"{S3_OUTPUT_PREFIX}training-progress.json",
+)
+run.summary["checkpoint_s3_uri"] = f"s3://{S3_BUCKET}/{S3_OUTPUT_PREFIX}final/"
+print("Training output safely stored at:", run.summary["checkpoint_s3_uri"])
 """
             ),
             markdown_cell(
@@ -498,10 +648,13 @@ for step in expected_steps:
     print(f"SciQ: {VARIANT}, step={step}, checkpoint={checkpoint}")
     torch.cuda.reset_peak_memory_stats()
     started = time.perf_counter()
+    model_args = {"pretrained": checkpoint, "dtype": "float16"}
+    if step == 0:
+        model_args["revision"] = CONFIG["model_revision"]
     harness_result = simple_evaluate(
         model="hf",
-        model_args={"pretrained": checkpoint, "dtype": "float16"},
-        tasks=["sciq"],
+        model_args=model_args,
+        tasks=[SCIQ_TASK],
         num_fewshot=0,
         batch_size=CONFIG["sciq_batch_size"],
         device="cuda:0",
@@ -531,6 +684,27 @@ for step in expected_steps:
         "sciq_examples": extracted["examples"],
     }
     sciq_rows.append(row)
+    SCIQ_PROGRESS_PATH.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "variant": VARIANT,
+                "experiment_fingerprint": experiment_fingerprint,
+                "completed_steps": [item["global_step"] for item in sciq_rows],
+                "rows": sciq_rows,
+            },
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False,
+        )
+        + "\\n",
+        encoding="utf-8",
+    )
+    s3.upload_file(
+        str(SCIQ_PROGRESS_PATH),
+        S3_BUCKET,
+        f"{S3_OUTPUT_PREFIX}sciq-progress.json",
+    )
     run.log({
         "curve/global_step": step,
         "curve/sciq_acc": row["sciq_acc"],
@@ -594,15 +768,17 @@ torch.cuda.empty_cache()
 """
             ),
             markdown_cell(
-                """## 7. Save final model and curve results
+                """## 7. Save curve results
 
-The final model, JSON, and CSV are uploaded. Intermediate checkpoints are deliberately kept local to avoid unnecessary S3 storage cost.
+The final model was uploaded immediately after training. The completed JSON and CSV are now uploaded. Intermediate checkpoints are deliberately kept local to avoid unnecessary S3 storage cost.
 """
             ),
             code_cell(
                 """result = {
-    "schema_version": 1,
+    "schema_version": 2,
     "variant": VARIANT,
+    "experiment_identity": experiment_identity,
+    "experiment_fingerprint": experiment_fingerprint,
     "config": CONFIG,
     "training_plan": training_plan,
     "variant_plan": variant_plan,
@@ -610,6 +786,8 @@ The final model, JSON, and CSV are uploaded. Intermediate checkpoints are delibe
     "train_metrics": train_metrics,
     "curve_probe": {
         "sequences": CONFIG["curve_validation_sequences"],
+        "probe_sha256": probe_sha256,
+        "sequence_token_sha256": probe_sequence_hashes,
         "rows": curve_rows,
     },
     "full_final_validation": {
@@ -619,11 +797,8 @@ The final model, JSON, and CSV are uploaded. Intermediate checkpoints are delibe
     "environment": {
         "python": sys.version,
         "platform": platform.platform(),
-        "torch": torch.__version__,
-        "transformers": transformers.__version__,
-        "lm_eval": importlib.metadata.version("lm-eval"),
+        **environment_compatibility,
         "wandb": wandb.__version__,
-        "gpu": torch.cuda.get_device_name(0),
     },
     "wandb_run_id": run.id,
     "wandb_run_url": run.url,
@@ -633,14 +808,6 @@ CURVE_RESULT_PATH.write_text(
     encoding="utf-8",
 )
 
-for local_path in FINAL_MODEL_DIR.rglob("*"):
-    if local_path.is_file():
-        relative = local_path.relative_to(FINAL_MODEL_DIR).as_posix()
-        s3.upload_file(
-            str(local_path),
-            S3_BUCKET,
-            f"{S3_OUTPUT_PREFIX}final/{relative}",
-        )
 s3.upload_file(
     str(CURVE_RESULT_PATH), S3_BUCKET, f"{S3_OUTPUT_PREFIX}curve-results.json"
 )
@@ -654,16 +821,17 @@ artifact = wandb.Artifact(
     metadata={
         "variant": VARIANT,
         "train_input_tokens": variant_plan["train_input_tokens"],
+        "experiment_fingerprint": experiment_fingerprint,
     },
 )
 artifact.add_dir(str(RESULTS_DIR))
 run.log_artifact(artifact)
 run.summary["train_input_tokens"] = variant_plan["train_input_tokens"]
+run.summary["experiment_fingerprint"] = experiment_fingerprint
 run.summary["pure_training_gpu_hours"] = train_metrics["pure_training_gpu_hours"]
 run.summary["final_sciq_acc_norm"] = curve_rows[-1]["sciq_acc_norm"]
 run.summary["final_curve_perplexity"] = curve_rows[-1]["validation_perplexity"]
 run.summary["final_full_perplexity"] = full_overall["perplexity"]
-run.summary["checkpoint_s3_uri"] = f"s3://{S3_BUCKET}/{S3_OUTPUT_PREFIX}final/"
 print("W&B:", run.url)
 print("Results:", f"s3://{S3_BUCKET}/{S3_OUTPUT_PREFIX}curve-results.json")
 wandb.finish()

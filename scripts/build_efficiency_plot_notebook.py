@@ -30,11 +30,11 @@ def build_notebook():
     core = CORE_PATH.read_text(encoding="utf-8")
     cells = [
         markdown_cell(
-            """# peS2o 去重训练效率曲线
+            """# peS2o Deduplication Training-Efficiency Curves
 
-在 `raw`、`minhashlsh` 和 `lshbloom` 三次完整数据训练都完成后运行这个 notebook。它从 S3 下载三份真实曲线数据，验证 checkpoint 顺序，生成 CSV 和四张对比曲线，并把结果上传到 W&B 和 S3。
+Run this notebook after the `raw`, `minhashlsh`, and `lshbloom` full-corpus training runs are complete. It downloads the three measured result files from S3, validates checkpoint ordering and experiment identity, creates CSV files and four comparison plots, and uploads the outputs to W&B and S3.
 
-该 notebook 不需要 GPU。请在 Colab Secrets 中设置 `AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY` 和 `WANDB_API_KEY`；临时凭证还需要 `AWS_SESSION_TOKEN`。
+This notebook does not require a GPU. Add `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `WANDB_API_KEY` to Colab Secrets. Temporary AWS credentials also require `AWS_SESSION_TOKEN`.
 """
         ),
         code_cell(
@@ -128,9 +128,11 @@ for variant in VARIANTS:
     all_rows.extend(rows)
     raw_results[variant] = result
 
+experiment_fingerprint = validate_shared_experiment_results(raw_results.values())
 validate_curve_rows(all_rows, expected_variants=VARIANTS)
 frame = pd.DataFrame(all_rows, columns=CURVE_COLUMNS)
 frame.to_csv(OUTPUT_DIR / "all-curve-results.csv", index=False)
+print("Verified shared experiment fingerprint:", experiment_fingerprint)
 display(frame)
 """
         ),
@@ -262,7 +264,11 @@ run = wandb.init(
     project=CONFIG["wandb_project"],
     group=CONFIG["wandb_group"],
     name=CONFIG["wandb_run_name"],
-    config={**CONFIG, "source_results": RESULT_KEYS},
+    config={
+        **CONFIG,
+        "source_results": RESULT_KEYS,
+        "experiment_fingerprint": experiment_fingerprint,
+    },
 )
 run.log({
     "efficiency/curves": wandb.Image(str(png_path)),
@@ -283,6 +289,7 @@ for local_path in OUTPUT_DIR.iterdir():
         s3.upload_file(str(local_path), S3_BUCKET, f"{summary_prefix}{local_path.name}")
 
 run.summary["results_s3_uri"] = f"s3://{S3_BUCKET}/{summary_prefix}"
+run.summary["experiment_fingerprint"] = experiment_fingerprint
 print("W&B:", run.url)
 print("S3:", run.summary["results_s3_uri"])
 wandb.finish()
