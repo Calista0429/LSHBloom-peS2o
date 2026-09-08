@@ -1,185 +1,160 @@
-# Qwen peS2o Deduplication Downstream Evaluation Design
+# Qwen peS2o SciQ Evaluation Design
 
 ## Goal
 
-Evaluate whether continued pretraining on Raw, MinHashLSH-deduplicated, or
-LSHBloom-deduplicated peS2o data changes the quality of the resulting
-Qwen2.5-0.5B Base model. The comparison must keep the evaluation data,
-checkpoint loading, prompts, few-shot settings, batch settings, and metric
-aggregation identical across all three models.
+Compare the SciQ performance of the three Qwen2.5-0.5B Base checkpoints that
+were continued-pretrained on Raw, MinHashLSH-deduplicated, and
+LSHBloom-deduplicated peS2o data. This first downstream experiment evaluates
+SciQ only. Other benchmarks and peS2o validation perplexity are outside this
+stage.
 
-This is a pilot experiment. Each checkpoint saw 24,999,936 training tokens, so
-differences between the three models can be compared directly, but small score
-differences should be treated as uncertain rather than conclusive.
+Each checkpoint saw exactly 24,999,936 training tokens. The evaluation must
+therefore keep every other condition identical and change only the checkpoint.
 
 ## Checkpoints
 
-The notebook evaluates these immutable S3 prefixes:
+Evaluate these S3 prefixes in this fixed order:
 
-- `s3://calista-bucket/pes2o/v2/experiments/pilot-5000/checkpoints/raw/final/`
-- `s3://calista-bucket/pes2o/v2/experiments/pilot-5000/checkpoints/minhashlsh/final/`
-- `s3://calista-bucket/pes2o/v2/experiments/pilot-5000/checkpoints/lshbloom/final/`
+1. `s3://calista-bucket/pes2o/v2/experiments/pilot-5000/checkpoints/raw/final/`
+2. `s3://calista-bucket/pes2o/v2/experiments/pilot-5000/checkpoints/minhashlsh/final/`
+3. `s3://calista-bucket/pes2o/v2/experiments/pilot-5000/checkpoints/lshbloom/final/`
 
-Each prefix contains a Transformers-compatible model and tokenizer, including
-`config.json`, `model.safetensors`, and tokenizer files. The original
-`Qwen/Qwen2.5-0.5B` checkpoint is an optional fourth reference. It is disabled
-by default because the primary experiment compares the three equally trained
-checkpoints.
+Each prefix is a complete Transformers checkpoint with model weights,
+configuration, and tokenizer files. The original Hugging Face Qwen checkpoint
+is not included in this first comparison.
 
-## Evaluation Stages
+## SciQ Protocol
 
-### Stage 1: Smoke Test
+Use `lm-evaluation-harness==0.4.13` and its built-in `sciq` task. SciQ is a
+four-choice English science question-answering dataset. The harness evaluates
+the public SciQ test split by comparing the likelihood of each answer choice.
 
-Before a long run, evaluate a small deterministic slice of every task for all
-three checkpoints. This verifies AWS credentials, checkpoint integrity, CUDA
-inference, task availability, metric serialization, and W&B logging.
+Evaluation settings:
 
-The smoke run uses the first 10 examples per task. Its scores are only pipeline
-checks and must never be reported as experimental results.
+- Task: `sciq`
+- Test examples: the complete test split
+- Few-shot examples: 0
+- Model backend: Hugging Face causal language model
+- Chat template: disabled
+- Device: one CUDA GPU
+- Dtype: FP16
+- Batch size: 8 by default, configurable in one place
+- Random seeds: 42
+- Sample logging: enabled
 
-### Stage 2: peS2o Validation Perplexity
+These are base-model checkpoints, so the harness must score answer
+continuations directly without a system prompt or chat formatting. No optimizer,
+backward pass, or parameter update is created.
 
-Measure causal-language-model perplexity on the official peS2o V2 validation
-split, which is disjoint from the 5,000 training documents used in this pilot.
-Use the tokenizer stored with each checkpoint, tokenize without automatically
-adding special tokens, append one EOS token per document, and pack each source
-independently into 2,048-token sequences.
+Before the full run, the notebook evaluates exactly 10 SciQ test examples for
+all three models. These smoke-test scores only validate the pipeline and must
+not be presented as experimental results.
 
-Report S2ORC, S2AG, and overall loss and perplexity. Overall perplexity is
-computed from total negative log-likelihood divided by the total number of
-predicted tokens; it is not the arithmetic mean of source perplexities.
-
-Default scope is the deterministic 1,000-document validation sample already
-defined for the project: 320 S2ORC documents and 680 S2AG documents. A single
-configuration switch enables the complete validation split later.
-
-### Stage 3: Downstream Tasks
-
-Use EleutherAI `lm-evaluation-harness` with the Hugging Face backend. Evaluate
-base-model likelihoods without a chat template and without generation sampling.
-
-Run these tasks at zero-shot:
-
-- `sciq`: science question answering and the most directly relevant task.
-- `arc_easy` and `arc_challenge`: grade-school science questions.
-- `openbookqa`: science facts plus reasoning.
-- `hellaswag`: sentence-completion and commonsense reasoning.
-- `piqa`: physical commonsense.
-- `winogrande`: pronoun and commonsense reasoning.
-- `boolq`: reading comprehension.
-
-Run the `mmlu` group separately with five-shot examples to match the convention
-used by DCLM. MMLU is a secondary result for this 0.5B pilot because a small
-model may remain close to random-guess performance.
-
-The harness version is pinned in the notebook. Before evaluation, the notebook
-lists or validates the requested task names so a library update cannot silently
-change the requested suite. The task list follows the official
-[`lm-evaluation-harness` task catalog](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/tasks/README.md).
+The SciQ task definition follows the official
+[`lm-evaluation-harness` configuration](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/tasks/sciq/sciq.yaml).
 
 ## Metrics
 
-Preserve every metric returned by the harness, including its standard errors.
-Use the following as the primary values in the comparison table:
+Preserve all metrics returned by the harness. The final comparison emphasizes:
 
-- `acc_norm` for multiple-choice tasks when available.
-- `acc` when normalized accuracy is not defined.
-- MMLU macro-average accuracy from the task group.
-- peS2o negative-log-likelihood loss and perplexity.
+- `acc_norm`: primary metric; choice likelihood normalized by answer length.
+- `acc`: secondary metric; unnormalized answer-choice likelihood.
+- `acc_norm_stderr` and `acc_stderr`: uncertainty estimates reported by the
+  harness.
+- Number of evaluated examples and elapsed time.
 
-For every task, report both the absolute score and the change relative to Raw:
+For MinHashLSH and LSHBloom, report the difference from Raw:
 
 ```text
-delta(method, task) = score(method, task) - score(raw, task)
+delta_acc_norm = method_acc_norm - raw_acc_norm
+delta_acc = method_acc - raw_acc
 ```
 
-Also compute an unweighted mean over the eight zero-shot task-level primary
-scores. Do not mix MMLU or perplexity into that mean because they have different
-scales and meanings.
-
-The final interpretation uses the reported standard errors. A tiny score
-difference smaller than roughly two combined standard errors is labeled
-inconclusive. The notebook does not claim statistical significance from one
-continued-pretraining run per dataset.
+Raw deltas are exactly zero. Missing or failed scores remain missing and are
+never replaced with zero. Because this pilot contains one trained model per
+dataset variant, small differences within the reported uncertainty are called
+inconclusive.
 
 ## Colab Workflow
 
-The deliverable is one standalone Colab notebook plus small locally tested
-helper modules used to generate it. A user runs it from top to bottom:
+Deliver one standalone Google Colab notebook. The user runs it from top to
+bottom on a V100:
 
-1. Select a V100 GPU runtime.
-2. Store `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, optional
-   `AWS_SESSION_TOKEN`, `AWS_DEFAULT_REGION`, and `WANDB_API_KEY` in Colab
+1. Add `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, optional
+   `AWS_SESSION_TOKEN`, `AWS_DEFAULT_REGION`, and `WANDB_API_KEY` to Colab
    userdata.
-3. Install pinned dependencies.
-4. Read secrets with `google.colab.userdata.get`; never print them.
-5. Download one checkpoint prefix from S3 to temporary Colab storage.
-6. Run the smoke test or full evaluation for that checkpoint.
-7. Save raw results, release GPU memory, and delete the temporary local model.
+2. Install pinned evaluation dependencies.
+3. Read secrets through `google.colab.userdata.get` without printing them.
+4. Confirm CUDA is available and record the GPU name.
+5. Create one W&B run for the three-model SciQ comparison.
+6. Download one checkpoint prefix to temporary Colab storage.
+7. Load and evaluate that checkpoint, save its raw results, then release GPU
+   memory and remove the temporary local copy.
 8. Repeat for the next checkpoint.
-9. Build the cross-model comparison table and upload all outputs to W&B.
+9. Create and display the final comparison table.
+10. Upload all result files to W&B as one artifact and finish the run.
 
-Processing one checkpoint at a time keeps Colab disk and GPU use low. Downloaded
-models are disposable local copies; the S3 checkpoints remain unchanged.
+Sequential processing requires only one roughly 2 GB checkpoint on local disk
+and one model in GPU memory at a time. It does not modify S3.
 
-## W&B and Saved Outputs
+## Outputs
 
-Create one W&B run for the complete comparison. Log:
+Write the following files under `/content/results/sciq/`:
 
-- checkpoint S3 prefix and variant;
-- checkpoint file metadata;
-- evaluation library and package versions;
-- GPU, dtype, batch size, task names, few-shot settings, limits, and seeds;
-- per-task metrics and standard errors;
-- per-source and overall peS2o perplexity;
-- elapsed time and peak CUDA memory;
-- cross-model score deltas relative to Raw.
+- `raw-smoke.json`, `minhashlsh-smoke.json`, and `lshbloom-smoke.json`
+- `raw-full.json`, `minhashlsh-full.json`, and `lshbloom-full.json`
+- `comparison.csv`
+- `summary.json`
+- `failures.json` only if any stage fails
 
-Write outputs under `/content/results/`:
+W&B receives configuration, environment versions, per-model metrics, standard
+errors, elapsed time, peak CUDA memory, the final comparison table, and a
+single artifact containing the result directory. Smoke metrics use a separate
+`smoke/` namespace so they cannot be mistaken for full results.
 
-- one raw harness JSON file per model and stage;
-- one perplexity JSON file per model;
-- `comparison.csv` for easy plotting and inspection;
-- `summary.json` containing configuration, primary scores, deltas, and run
-  status;
-- `failures.json` if a model or task fails.
+## Failure Handling
 
-Upload the directory as one W&B artifact. A failure in one model is recorded
-and shown clearly; it must not be converted into a zero score.
+- Missing Colab secrets stop before any checkpoint download begins.
+- An incomplete S3 checkpoint reports the missing required files.
+- CUDA out-of-memory reports the active batch size and instructs the user to
+  reduce `batch_size` and rerun.
+- Non-finite or absent SciQ metrics fail that model instead of producing a
+  misleading comparison.
+- A model failure is written to `failures.json`, uploaded to W&B, and displayed
+  clearly.
 
-## Reproducibility and Fairness Controls
+## Reproducibility Controls
 
-- Evaluate checkpoint variants in fixed order: Raw, MinHashLSH, LSHBloom.
-- Use seed 42 everywhere supported by the harness.
-- Use CUDA FP16 inference and a fixed batch size that fits a V100.
-- Do not update model parameters or create an optimizer.
-- Do not apply a chat template because these are base-model checkpoints.
-- Use identical task data and few-shot examples for every model.
-- Record exact dependency versions and checkpoint object metadata.
-- Never use the 5,000 training documents for perplexity evaluation.
-- Keep task-level results; do not rely only on a single average.
+- The same installed package versions remain active for all models.
+- The same SciQ task revision, examples, prompt construction, and zero-shot
+  setting are used for every checkpoint.
+- Evaluation order is fixed as Raw, MinHashLSH, and LSHBloom.
+- Seeds are fixed to 42 wherever supported.
+- Checkpoint S3 object names, sizes, and ETags are saved in `summary.json`.
+- Raw harness output and per-example samples are retained for audit.
 
 ## Validation
 
-Local tests verify that the notebook is valid JSON, every code cell compiles,
-the S3 paths and task settings are correct, secrets are not printed, aggregate
-perplexity is token-weighted, Raw deltas are zero, missing metrics remain
-missing rather than becoming zero, and the generated notebook is deterministic.
+Local automated tests verify that the notebook is valid JSON, every code cell
+compiles, the three S3 paths are exact, only the `sciq` task is requested,
+full evaluation uses no limit, smoke evaluation uses 10 examples, zero-shot and
+FP16 settings are fixed, secrets are never printed, result deltas are computed
+against Raw, and missing metrics remain missing.
 
-The Colab smoke stage then verifies the parts that require a V100, AWS, Hugging
-Face datasets, and W&B before the full evaluation begins.
+The Colab smoke stage verifies AWS access, S3 checkpoint completeness, model
+loading, SciQ dataset access, CUDA inference, and W&B logging before the full
+test split is evaluated.
 
 ## Acceptance Criteria
 
-The evaluation is complete when:
+The stage is complete when:
 
-1. All three S3 checkpoints load successfully and are evaluated under identical
+1. All three checkpoints complete the full SciQ test split under identical
    settings.
-2. The 1,000-document peS2o validation perplexity is available for every model.
-3. All eight zero-shot tasks and five-shot MMLU complete for every model.
-4. W&B contains configuration, per-task metrics, standard errors, timing, and
-   final comparison tables.
-5. The result artifact contains raw JSON outputs, `comparison.csv`, and
-   `summary.json`.
-6. Conclusions distinguish clear changes from differences too small to resolve
-   with this single-run pilot.
+2. `acc_norm`, `acc`, both standard errors, and elapsed time are recorded for
+   every checkpoint.
+3. `comparison.csv` correctly reports each model's score and change from Raw.
+4. W&B contains the run configuration, metrics, final table, and result
+   artifact.
+5. The notebook can be rerun from a fresh Colab V100 session using only the
+   configured userdata secrets.
