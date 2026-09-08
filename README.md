@@ -144,7 +144,10 @@ and changes relative to Raw.
 
 - `notebooks/qwen_pes2o_sciq_evaluation.ipynb`: complete Colab evaluation
 - `notebooks/qwen_pes2o_continued_pretraining.ipynb`: continued-pretraining run
+- `notebooks/qwen_pes2o_efficiency_training.ipynb`: full-corpus checkpoint curves
+- `notebooks/qwen_pes2o_efficiency_curves.ipynb`: three-variant curve comparison
 - `src/sciq_evaluation.py`: SciQ result validation and comparison helpers
+- `src/efficiency_curves.py`: token accounting and curve-result validation
 - `src/pes2o_dedup.py`: peS2o deduplication implementation
 - `src/pes2o_training.py`: fixed-token training-data packing
 - `tests/`: reproducibility and correctness tests
@@ -156,3 +159,66 @@ downstream benchmark. The strongest next analysis is a paired comparison of the
 saved per-example SciQ outputs, using paired bootstrap confidence intervals or
 McNemar's test. Larger training datasets and multiple training seeds are needed
 before making general claims about the effect of deduplication on model quality.
+
+## Full-Corpus Training-Efficiency Experiment
+
+The fixed 25-million-token experiment controls training compute. A second,
+complementary experiment asks whether deduplication can reach the same quality
+while training on fewer tokens. In this experiment, each variant is trained for
+one epoch over every complete 2,048-token sequence available in that variant.
+
+| Variant | Complete sequences | Training tokens | Unused incomplete tail |
+|---|---:|---:|---:|
+| Raw | 15,337 | 31,410,176 | 410 |
+| MinHashLSH | 14,065 | 28,805,120 | 565 |
+| LSHBloom | 14,039 | 28,751,872 | 1,106 |
+
+The deduplicated runs therefore use approximately 8.3% and 8.5% fewer
+training tokens than Raw. All other training hyperparameters remain fixed.
+
+Open
+[`notebooks/qwen_pes2o_efficiency_training.ipynb`](notebooks/qwen_pes2o_efficiency_training.ipynb)
+in Colab and run it three times in separate V100 runtimes:
+
+1. Set `VARIANT = "raw"` and run every cell.
+2. Set `VARIANT = "minhashlsh"` in a new runtime and run every cell.
+3. Set `VARIANT = "lshbloom"` in a new runtime and run every cell.
+
+Every 250 optimizer updates, the notebook evaluates a fixed 128-sequence
+peS2o validation probe and saves a temporary model-only checkpoint. After
+training, it evaluates the Base model and every checkpoint on all 1,000 SciQ
+test examples. It records:
+
+- cumulative training tokens;
+- cumulative training-only GPU hours;
+- validation loss and perplexity;
+- SciQ accuracy and length-normalized accuracy;
+- SciQ standard errors.
+
+The final model and curve results are uploaded under:
+
+```text
+s3://calista-bucket/pes2o/v2/experiments/pilot-5000/efficiency/<variant>/
+```
+
+Intermediate checkpoints remain local and are used only to obtain curve
+points. A run needs roughly 10 GB of temporary disk space. The model-only
+checkpoints cannot resume interrupted training.
+
+After all three training runs finish, open
+[`notebooks/qwen_pes2o_efficiency_curves.ipynb`](notebooks/qwen_pes2o_efficiency_curves.ipynb).
+It downloads the three result files and produces:
+
+1. validation perplexity versus cumulative training tokens;
+2. SciQ normalized accuracy versus cumulative training tokens;
+3. validation perplexity versus training GPU hours;
+4. SciQ normalized accuracy versus training GPU hours.
+
+The figure, combined CSV, PDF, and final cost summary are uploaded to W&B and
+to the S3 `efficiency/summary/` prefix. Diamonds mark the endpoint of one epoch,
+and SciQ error bars show the standard error reported by `lm-eval`.
+
+The expected shape below uses simulated values only. The Colab plotting
+notebook replaces these values with the measurements downloaded from S3.
+
+![Simulated expected efficiency curves](figures/expected-efficiency-curves.svg)
