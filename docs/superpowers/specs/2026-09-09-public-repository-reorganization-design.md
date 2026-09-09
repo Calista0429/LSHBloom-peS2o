@@ -12,7 +12,7 @@ The change will:
 - group data preparation, notebook generation, and analysis scripts by responsibility;
 - group notebooks by model family;
 - separate generated reports from their plotting code;
-- add project metadata, dependency groups, Ruff configuration, Pytest configuration, and continuous integration through `pyproject.toml` and GitHub Actions;
+- add project metadata, dependency groups, Ruff configuration, and Pytest configuration through `pyproject.toml`;
 - rewrite the root README around installation, repository structure, experiment reproduction, results, and limitations;
 - scan the working tree and full Git history for credentials before public release;
 - merge the reviewed branch into `main`, push it, and change the GitHub repository visibility to public only after all checks pass.
@@ -23,6 +23,7 @@ The change will not:
 - rerun training or change reported metrics;
 - upload datasets, checkpoints, private S3 result JSON, or credentials;
 - add `LICENSE`, `CONTRIBUTING.md`, or `SECURITY.md`;
+- add GitHub Actions or other hosted continuous-integration workflows;
 - rewrite old Git history unless the final credential scan finds a real secret.
 
 Without a `LICENSE` file, public visibility makes the source readable but does not grant a general license to copy, modify, or redistribute it.
@@ -31,9 +32,6 @@ Without a `LICENSE` file, public visibility makes the source readable but does n
 
 ```text
 LSHBloom-peS2o/
-├── .github/
-│   └── workflows/
-│       └── ci.yml
 ├── docs/
 │   ├── assets/
 │   │   └── expected-efficiency-curves.svg
@@ -105,17 +103,9 @@ Large notebook generators will not be refactored internally during this migratio
 
 Colab-specific training dependencies will remain pinned inside the generated notebooks because their GPU and CUDA compatibility differs from lightweight local development. The old `requirements-dedup.txt` will be removed after its dependency is represented in `pyproject.toml`.
 
-## Continuous Integration
+## Local Quality Checks
 
-`.github/workflows/ci.yml` will run on pushes and pull requests using one supported Python version. It will:
-
-1. install the package with development dependencies;
-2. run `ruff format --check`;
-3. run `ruff check`;
-4. run the complete test suite;
-5. regenerate each notebook and the simulated SVG, then fail if tracked artifacts change.
-
-The CI workflow will not require AWS, W&B, Hugging Face credentials, GPUs, or external experiment data.
+The README will document one local release-check sequence that installs development dependencies, runs `ruff format --check`, runs `ruff check`, executes the complete test suite, regenerates every Notebook and the simulated SVG, and fails if tracked artifacts change. These checks will not require AWS, W&B, Hugging Face credentials, GPUs, or external experiment data.
 
 ## Documentation
 
