@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.pes2o_dedup import (
+from lshbloom_pes2o.dedup import (
     build_indexes,
     DedupConfig,
     normalize_unigrams,

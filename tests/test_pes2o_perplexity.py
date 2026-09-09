@@ -10,8 +10,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import src.pes2o_perplexity as core
-from src.pes2o_perplexity import (
+import lshbloom_pes2o.perplexity as core
+from lshbloom_pes2o.perplexity import (
     collect_source_records,
     combine_source_metrics,
     iter_jsonl_gz,
@@ -159,7 +159,7 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(list(iter_jsonl_gz("https://example.test/data.gz")), records)
         urlopen.assert_called_once_with("https://example.test/data.gz", timeout=300)
 
-    @patch("src.pes2o_perplexity.iter_jsonl_gz")
+    @patch("lshbloom_pes2o.perplexity.iter_jsonl_gz")
     def test_collect_source_records_routes_until_each_limit(self, stream):
         stream.side_effect = [
             iter(
@@ -184,7 +184,7 @@ class CoreTests(unittest.TestCase):
         self.assertEqual([record["id"] for record in result["s2ag"]], ["a1", "a2"])
         self.assertEqual([record["id"] for record in result["s2orc"]], ["o1"])
 
-    @patch("src.pes2o_perplexity.iter_jsonl_gz")
+    @patch("lshbloom_pes2o.perplexity.iter_jsonl_gz")
     def test_collect_source_records_routes_validation_source_suffixes(self, stream):
         stream.side_effect = [
             iter([{"id": "a1", "source": "s2ag/valid", "text": "a"}]),

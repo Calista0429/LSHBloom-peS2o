@@ -6,9 +6,9 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.pes2o_dedup import DedupConfig, prepare_variants
+from lshbloom_pes2o.dedup import DedupConfig, prepare_variants
 
 
 def parse_args() -> argparse.Namespace:

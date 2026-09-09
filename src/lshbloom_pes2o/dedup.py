@@ -17,7 +17,7 @@ from typing import Callable, Iterable, Iterator, TextIO
 import datasketch
 from datasketch import MinHash, MinHashLSH, MinHashLSHBloom
 
-from src.pes2o_perplexity import validate_record
+from lshbloom_pes2o.perplexity import validate_record
 
 
 @dataclass(frozen=True)

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.efficiency_curves import (
+from lshbloom_pes2o.efficiency import (
     build_full_training_plan,
     canonical_sha256,
     checkpoint_steps,

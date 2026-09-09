@@ -5,7 +5,7 @@ import unittest
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.sciq_evaluation import (
+from lshbloom_pes2o.sciq import (
     VARIANTS,
     build_comparison,
     extract_sciq_metrics,

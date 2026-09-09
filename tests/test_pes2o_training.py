@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from src.pes2o_training import TokenMemmapDataset, pack_jsonl_gz_to_memmap
+from lshbloom_pes2o.training import TokenMemmapDataset, pack_jsonl_gz_to_memmap
 
 
 class FakeTokenizer:
