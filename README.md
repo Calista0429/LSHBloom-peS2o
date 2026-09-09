@@ -276,3 +276,11 @@ The expected shape below uses simulated values only. The Colab plotting
 notebook replaces these values with the measurements downloaded from S3.
 
 ![Simulated expected efficiency curves](figures/expected-efficiency-curves.svg)
+
+## Current Qwen Result Analysis
+
+The measured equal-token comparison and the currently available Raw versus
+MinHashLSH efficiency curves are summarized in
+[`reports/qwen_results/README.md`](reports/qwen_results/README.md). The report
+includes validated source snapshots, CSV tables, and publication-ready PNG and
+PDF figures. The LSHBloom full-corpus curve is still pending.

@@ -1,0 +1,4 @@
+variant,examples,acc,acc_stderr,acc_norm,acc_norm_stderr
+raw,1000,0.897,0.009617,0.881,0.010244
+minhashlsh,1000,0.902,0.009407,0.869,0.010675
+lshbloom,1000,0.900,0.009492,0.869,0.010675
