@@ -89,15 +89,20 @@ class PlamoTrainingNotebookTests(unittest.TestCase):
         self.assertIn("torch_dtype=torch.float32", code)
         self.assertNotIn("model.to(dtype=torch.float16)", code)
 
-    def test_keeps_the_equal_twenty_five_million_token_protocol(self):
+    def test_uses_an_equal_plamo_budget_that_fits_every_variant(self):
         code = "\n".join(code_cells())
 
         for required in (
             'VARIANT = "raw"',
             'ALLOWED_VARIANTS = {"raw", "minhashlsh", "lshbloom"}',
             '"sequence_length": 2048',
-            '"sequence_count": 12_207',
-            '"train_input_tokens": 24_999_936',
+            '"sequence_count": 12_150',
+            '"train_input_tokens": 24_883_200',
+            '"raw": 27_161_292',
+            '"minhashlsh": 24_930_000',
+            '"lshbloom": 24_883_479',
+            'available_tokens = CONFIG["available_plamo_tokens"][VARIANT]',
+            '"unused_tail_tokens": available_tokens - CONFIG["train_input_tokens"]',
             '"gradient_accumulation_steps": 8',
             '"learning_rate": 5e-5',
             '"warmup_ratio": 0.03',
@@ -106,9 +111,7 @@ class PlamoTrainingNotebookTests(unittest.TestCase):
         ):
             self.assertIn(required, code)
 
-        self.assertNotIn(
-            'variant_info["token_count"] < CONFIG["train_input_tokens"]', code
-        )
+        self.assertNotIn('"train_input_tokens": 24_999_936', code)
         self.assertIn("pack_jsonl_gz_to_memmap(", code)
 
     def test_preflights_and_persists_before_full_validation(self):
@@ -122,7 +125,7 @@ class PlamoTrainingNotebookTests(unittest.TestCase):
             '"s2ag_documents": 680',
             "VALIDATION_REVISION",
             "combine_source_metrics(source_results.values())",
-            'plamo-2-1b-25m/checkpoints/{VARIANT}',
+            'plamo-2-1b-equal-24883200/checkpoints/{VARIANT}',
             "del trainer",
             "s3.put_object(",
             "s3.delete_object(",

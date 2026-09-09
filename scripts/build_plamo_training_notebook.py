@@ -32,9 +32,9 @@ def build_notebook():
     evaluation_core = EVALUATION_CORE_PATH.read_text(encoding="utf-8")
     cells = [
         markdown_cell(
-            """# PLaMo 2 1B: Equal-25M-Token peS2o Continued Pretraining
+            """# PLaMo 2 1B: Equal-24,883,200-Token peS2o Continued Pretraining
 
-This notebook trains one data variant per run: `raw`, `minhashlsh`, or `lshbloom`. Every run uses exactly 24,999,936 PLaMo tokenizer tokens, so the training-data deduplication method is the only experimental variable.
+This notebook trains one data variant per run: `raw`, `minhashlsh`, or `lshbloom`. Every run uses exactly 24,883,200 PLaMo tokenizer tokens, so the training-data deduplication method is the only experimental variable. This common budget is the largest multiple of 2,048 that fits the smallest variant after all three complete files are counted with the pinned PLaMo tokenizer.
 
 PLaMo 2 uses custom Mamba kernels with strict dependency requirements. Before connecting, select **Runtime > Change runtime type**, choose an **A100 GPU**, and choose the **2025.07 past runtime (Python 3.11)**. The setup cell installs all pinned dependencies and restarts the runtime once. After reconnection, run all cells again.
 
@@ -217,8 +217,13 @@ CONFIG = {
     "mamba_ssm_version": "2.2.4",
     "causal_conv1d_version": "1.4.0",
     "sequence_length": 2048,
-    "sequence_count": 12_207,
-    "train_input_tokens": 24_999_936,
+    "sequence_count": 12_150,
+    "train_input_tokens": 24_883_200,
+    "available_plamo_tokens": {
+        "raw": 27_161_292,
+        "minhashlsh": 24_930_000,
+        "lshbloom": 24_883_479,
+    },
     "per_device_train_batch_size": 1,
     "gradient_accumulation_steps": 8,
     "learning_rate": 5e-5,
@@ -235,7 +240,7 @@ CONFIG = {
     "s2orc_documents": 320,
     "s2ag_documents": 680,
     "wandb_project": "lshbloom-pes2o",
-    "wandb_group": "plamo-2-1b-pes2o-dedup-25m",
+    "wandb_group": "plamo-2-1b-pes2o-dedup-equal-24883200",
 }
 
 if VARIANT not in ALLOWED_VARIANTS:
@@ -306,8 +311,8 @@ s3 = boto3.session.Session(**session_kwargs).client("s3")
 S3_BUCKET = "calista-bucket"
 S3_PREFIX = "pes2o/v2/experiments/pilot-5000/"
 S3_URI = f"s3://{S3_BUCKET}/{S3_PREFIX}"
-checkpoint_prefix = f"{S3_PREFIX}plamo-2-1b-25m/checkpoints/{VARIANT}"
-WORK_DIR = Path(f"/content/plamo-2-1b-pes2o-{VARIANT}-25m")
+checkpoint_prefix = f"{S3_PREFIX}plamo-2-1b-equal-24883200/checkpoints/{VARIANT}"
+WORK_DIR = Path(f"/content/plamo-2-1b-pes2o-{VARIANT}-equal-24883200")
 DATA_PATH = WORK_DIR / "train.jsonl.gz"
 MANIFEST_PATH = WORK_DIR / "manifest.json"
 MEMMAP_PATH = WORK_DIR / "train-tokens.uint32"
@@ -350,6 +355,12 @@ s3.download_file(
 actual_sha256 = _sha256(DATA_PATH)
 if actual_sha256 != variant_info["sha256"]:
     raise RuntimeError("Dataset SHA-256 mismatch")
+available_tokens = CONFIG["available_plamo_tokens"][VARIANT]
+if available_tokens < CONFIG["train_input_tokens"]:
+    raise RuntimeError(
+        f"{VARIANT} has {available_tokens:,} PLaMo tokens, but the experiment "
+        f"requires {CONFIG['train_input_tokens']:,}"
+    )
 
 tokenizer = AutoTokenizer.from_pretrained(
     CONFIG["model_id"],
@@ -395,13 +406,15 @@ PLaMo is loaded with its pinned remote model code. Parameters remain FP32 while 
 run = wandb.init(
     project=CONFIG["wandb_project"],
     group=CONFIG["wandb_group"],
-    name=f"plamo-2-1b-{VARIANT}-25m",
+    name=f"plamo-2-1b-{VARIANT}-equal-24883200",
     config={
         **CONFIG,
         "variant": VARIANT,
         "source_manifest_sha256": source_manifest_sha256,
         "dataset_sha256": actual_sha256,
         "source_manifest_token_count": variant_info["token_count"],
+        "available_plamo_tokens": available_tokens,
+        "unused_tail_tokens": available_tokens - CONFIG["train_input_tokens"],
         "packing": packing,
         "gpu": gpu_name,
     },
@@ -453,7 +466,7 @@ torch.cuda.empty_cache()
         markdown_cell(
             """## 4. Continue pretraining and persist the final checkpoint
 
-All three variants use the same 24,999,936-token budget and schedule. Adafactor is used for all three PLaMo runs, and BF16 computation is used with FP32 model parameters for numerical stability. The final model is uploaded to S3 immediately after training, before validation begins.
+All three variants use the same 24,883,200-token budget and schedule. Adafactor is used for all three PLaMo runs, and BF16 computation is used with FP32 model parameters for numerical stability. The final model is uploaded to a new S3 experiment prefix immediately after training, before validation begins.
 """
         ),
         code_cell(
@@ -478,7 +491,7 @@ All three variants use the same 24,999,936-token budget and schedule. Adafactor 
     save_total_limit=1,
     save_only_model=True,
     report_to=["wandb"],
-    run_name=f"plamo-2-1b-{VARIANT}-25m",
+    run_name=f"plamo-2-1b-{VARIANT}-equal-24883200",
     seed=CONFIG["seed"],
     data_seed=CONFIG["seed"],
     dataloader_num_workers=2,
@@ -609,6 +622,8 @@ The result JSON records the pinned model and validation revisions, exact PLaMo p
         "source_file_sha256": actual_sha256,
         "source_manifest_sha256": source_manifest_sha256,
         "source_manifest_token_count_qwen_tokenizer": variant_info["token_count"],
+        "full_file_plamo_token_count": available_tokens,
+        "unused_tail_tokens": available_tokens - CONFIG["train_input_tokens"],
         "plamo_packing": packing,
     },
     "training": train_metrics,
@@ -638,7 +653,7 @@ RESULT_PATH.write_text(
 s3.upload_file(str(RESULT_PATH), S3_BUCKET, f"{checkpoint_prefix}/result.json")
 
 artifact = wandb.Artifact(
-    name=f"plamo-2-1b-{VARIANT}-25m-results",
+    name=f"plamo-2-1b-{VARIANT}-equal-24883200-results",
     type="evaluation",
     metadata={
         "variant": VARIANT,
@@ -657,7 +672,7 @@ wandb.finish()
         markdown_cell(
             """## Reading the three runs
 
-Compare `eval/overall_perplexity`, `eval/s2orc_perplexity`, `eval/s2ag_perplexity`, and `train/train_loss` inside the W&B group `plamo-2-1b-pes2o-dedup-25m`. Lower perplexity is better. Because Raw, MinHashLSH, and LSHBloom each use the same PLaMo token budget, their final differences estimate the effect of which content remains after deduplication. They do not measure token-cost savings; the full-corpus efficiency experiment serves that separate question.
+Compare `eval/overall_perplexity`, `eval/s2orc_perplexity`, `eval/s2ag_perplexity`, and `train/train_loss` inside the W&B group `plamo-2-1b-pes2o-dedup-equal-24883200`. Lower perplexity is better. Because Raw, MinHashLSH, and LSHBloom each use the same 24,883,200-token PLaMo budget, their final differences estimate the effect of which content remains after deduplication. Do not mix these runs with checkpoints from the earlier 24,999,936-token prefix. They do not measure token-cost savings; the full-corpus efficiency experiment serves that separate question.
 """
         ),
     ]
