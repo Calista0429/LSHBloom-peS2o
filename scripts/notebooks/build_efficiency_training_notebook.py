@@ -2,13 +2,13 @@ import json
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
-OUTPUT_PATH = ROOT / "notebooks" / "qwen_pes2o_efficiency_training.ipynb"
+ROOT = Path(__file__).resolve().parents[2]
+OUTPUT_PATH = ROOT / "notebooks" / "qwen" / "qwen_pes2o_efficiency_training.ipynb"
 CORE_PATHS = (
-    ROOT / "src" / "pes2o_training.py",
-    ROOT / "src" / "pes2o_perplexity.py",
-    ROOT / "src" / "sciq_evaluation.py",
-    ROOT / "src" / "efficiency_curves.py",
+    ROOT / "src" / "lshbloom_pes2o" / "training.py",
+    ROOT / "src" / "lshbloom_pes2o" / "perplexity.py",
+    ROOT / "src" / "lshbloom_pes2o" / "sciq.py",
+    ROOT / "src" / "lshbloom_pes2o" / "efficiency.py",
 )
 
 

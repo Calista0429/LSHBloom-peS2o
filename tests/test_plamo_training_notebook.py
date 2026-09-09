@@ -7,8 +7,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-GENERATOR = ROOT / "scripts" / "build_plamo_training_notebook.py"
-NOTEBOOK = ROOT / "notebooks" / "plamo2_1b_pes2o_continued_pretraining.ipynb"
+GENERATOR = ROOT / "scripts" / "notebooks" / "build_plamo_training_notebook.py"
+NOTEBOOK = (
+    ROOT / "notebooks" / "plamo" / "plamo2_1b_pes2o_continued_pretraining.ipynb"
+)
 
 
 def code_cells():

@@ -114,7 +114,7 @@ class PrepareVariantsTests(unittest.TestCase):
     def test_cli_can_run_directly_from_repository_root(self):
         root = Path(__file__).resolve().parents[1]
         result = subprocess.run(
-            [sys.executable, "scripts/prepare_pes2o_variants.py", "--help"],
+            [sys.executable, "scripts/data/prepare_pes2o_variants.py", "--help"],
             cwd=root,
             capture_output=True,
             text=True,

@@ -2,10 +2,12 @@ import json
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
-TRAINING_CORE_PATH = ROOT / "src" / "pes2o_training.py"
-EVALUATION_CORE_PATH = ROOT / "src" / "pes2o_perplexity.py"
-OUTPUT_PATH = ROOT / "notebooks" / "plamo2_1b_pes2o_continued_pretraining.ipynb"
+ROOT = Path(__file__).resolve().parents[2]
+TRAINING_CORE_PATH = ROOT / "src" / "lshbloom_pes2o" / "training.py"
+EVALUATION_CORE_PATH = ROOT / "src" / "lshbloom_pes2o" / "perplexity.py"
+OUTPUT_PATH = (
+    ROOT / "notebooks" / "plamo" / "plamo2_1b_pes2o_continued_pretraining.ipynb"
+)
 
 
 def source_lines(source):

@@ -4,8 +4,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-NOTEBOOK = ROOT / "notebooks" / "qwen_pes2o_validation_perplexity.ipynb"
-CORE = ROOT / "src" / "pes2o_perplexity.py"
+NOTEBOOK = ROOT / "notebooks" / "qwen" / "qwen_pes2o_validation_perplexity.ipynb"
+CORE = ROOT / "src" / "lshbloom_pes2o" / "perplexity.py"
 
 
 class ColabNotebookTests(unittest.TestCase):

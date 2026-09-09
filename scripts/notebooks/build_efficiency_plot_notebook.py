@@ -2,9 +2,9 @@ import json
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
-CORE_PATH = ROOT / "src" / "efficiency_curves.py"
-OUTPUT_PATH = ROOT / "notebooks" / "qwen_pes2o_efficiency_curves.ipynb"
+ROOT = Path(__file__).resolve().parents[2]
+CORE_PATH = ROOT / "src" / "lshbloom_pes2o" / "efficiency.py"
+OUTPUT_PATH = ROOT / "notebooks" / "qwen" / "qwen_pes2o_efficiency_curves.ipynb"
 
 
 def source_lines(source):

@@ -6,8 +6,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-NOTEBOOK_PATH = ROOT / "notebooks" / "qwen_pes2o_continued_pretraining.ipynb"
-GENERATOR_PATH = ROOT / "scripts" / "build_training_notebook.py"
+NOTEBOOK_PATH = ROOT / "notebooks" / "qwen" / "qwen_pes2o_continued_pretraining.ipynb"
+GENERATOR_PATH = ROOT / "scripts" / "notebooks" / "build_training_notebook.py"
 
 
 class TrainingNotebookTests(unittest.TestCase):
@@ -42,8 +42,12 @@ class TrainingNotebookTests(unittest.TestCase):
 
     def test_notebook_embeds_both_tested_helpers(self):
         code = self.combined_code()
-        training_core = (ROOT / "src" / "pes2o_training.py").read_text()
-        evaluation_core = (ROOT / "src" / "pes2o_perplexity.py").read_text()
+        training_core = (
+            ROOT / "src" / "lshbloom_pes2o" / "training.py"
+        ).read_text()
+        evaluation_core = (
+            ROOT / "src" / "lshbloom_pes2o" / "perplexity.py"
+        ).read_text()
 
         self.assertIn(training_core, code)
         self.assertIn(evaluation_core, code)

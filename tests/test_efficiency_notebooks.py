@@ -7,10 +7,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TRAIN_GENERATOR = ROOT / "scripts" / "build_efficiency_training_notebook.py"
-PLOT_GENERATOR = ROOT / "scripts" / "build_efficiency_plot_notebook.py"
-TRAIN_NOTEBOOK = ROOT / "notebooks" / "qwen_pes2o_efficiency_training.ipynb"
-PLOT_NOTEBOOK = ROOT / "notebooks" / "qwen_pes2o_efficiency_curves.ipynb"
+TRAIN_GENERATOR = ROOT / "scripts" / "notebooks" / "build_efficiency_training_notebook.py"
+PLOT_GENERATOR = ROOT / "scripts" / "notebooks" / "build_efficiency_plot_notebook.py"
+TRAIN_NOTEBOOK = ROOT / "notebooks" / "qwen" / "qwen_pes2o_efficiency_training.ipynb"
+PLOT_NOTEBOOK = ROOT / "notebooks" / "qwen" / "qwen_pes2o_efficiency_curves.ipynb"
 
 
 def code_cells(path):
