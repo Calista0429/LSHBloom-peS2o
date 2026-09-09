@@ -7,6 +7,7 @@ The plotting script expects these files in this directory:
 - `fixed-lshbloom.json`
 - `efficiency-raw.json`
 - `efficiency-minhashlsh.json`
+- `efficiency-lshbloom.json`
 - `fixed-sciq.csv`
 
 The JSON files are the corresponding `result.json` and `curve-results.json`

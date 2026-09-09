@@ -279,8 +279,8 @@ notebook replaces these values with the measurements downloaded from S3.
 
 ## Current Qwen Result Analysis
 
-The measured equal-token comparison and the currently available Raw versus
-MinHashLSH efficiency curves are summarized in
+The measured equal-token comparison and the complete three-way efficiency
+curves are summarized in
 [`reports/qwen_results/README.md`](reports/qwen_results/README.md). The report
-includes validated source snapshots, CSV tables, and publication-ready PNG and
-PDF figures. The LSHBloom full-corpus curve is still pending.
+includes validated CSV tables and publication-ready PNG and PDF figures. It
+also records the PyTorch-version mismatch found in the LSHBloom run.

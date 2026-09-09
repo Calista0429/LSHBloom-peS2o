@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import csv
 import json
-import math
 import sys
 from pathlib import Path
 
@@ -65,6 +64,13 @@ def style_axis(axis) -> None:
     axis.set_axisbelow(True)
 
 
+def identity_without_torch(result: dict) -> dict:
+    """Return the controlled identity after removing the known runtime difference."""
+    identity = json.loads(json.dumps(result["experiment_identity"]))
+    identity["environment"].pop("torch")
+    return identity
+
+
 def main() -> None:
     fixed = {
         variant: load_json(f"fixed-{variant}.json") for variant in VARIANTS
@@ -111,23 +117,33 @@ def main() -> None:
 
     efficiency = {
         variant: load_json(f"efficiency-{variant}.json")
-        for variant in ("raw", "minhashlsh")
+        for variant in VARIANTS
     }
-    validate_shared_experiment_results(
-        efficiency.values(), expected_variants=("raw", "minhashlsh")
-    )
-    raw_probe = efficiency["raw"]["curve_probe"]
-    minhash_probe = efficiency["minhashlsh"]["curve_probe"]
-    if raw_probe["probe_sha256"] != minhash_probe["probe_sha256"]:
+    for variant, result in efficiency.items():
+        validate_shared_experiment_results([result], expected_variants=(variant,))
+    controlled_identities = {
+        json.dumps(identity_without_torch(result), sort_keys=True)
+        for result in efficiency.values()
+    }
+    if len(controlled_identities) != 1:
+        raise ValueError("Experiment identities differ beyond the PyTorch version")
+    probes = [result["curve_probe"] for result in efficiency.values()]
+    if len({probe["probe_sha256"] for probe in probes}) != 1:
         raise ValueError("Validation probe hashes differ")
-    if raw_probe["sequence_token_sha256"] != minhash_probe["sequence_token_sha256"]:
+    sequence_hashes = {
+        json.dumps(probe["sequence_token_sha256"], sort_keys=True)
+        for probe in probes
+    }
+    if len(sequence_hashes) != 1:
         raise ValueError("Validation sequence hashes differ")
     for source in ("s2orc", "s2ag"):
-        raw_source = efficiency["raw"]["full_final_validation"]["sources"][source]
-        minhash_source = efficiency["minhashlsh"]["full_final_validation"]["sources"][source]
-        if raw_source["document_ids"] != minhash_source["document_ids"]:
+        sources = [
+            result["full_final_validation"]["sources"][source]
+            for result in efficiency.values()
+        ]
+        if len({tuple(item["document_ids"]) for item in sources}) != 1:
             raise ValueError(f"Full-final {source} validation documents differ")
-        if raw_source["predicted_tokens"] != minhash_source["predicted_tokens"]:
+        if len({item["predicted_tokens"] for item in sources}) != 1:
             raise ValueError(f"Full-final {source} predicted-token counts differ")
 
     curve_rows = []
@@ -136,7 +152,7 @@ def main() -> None:
         validate_curve_rows(rows, expected_variants=(variant,))
         curve_rows.extend(rows)
     curve_rows.sort(key=lambda row: (VARIANTS.index(row["variant"]), row["global_step"]))
-    write_csv(REPORT_DIR / "efficiency_curve_partial.csv", curve_rows)
+    write_csv(REPORT_DIR / "efficiency_curve.csv", curve_rows)
 
     endpoint_rows = []
     for variant, result in efficiency.items():
@@ -146,6 +162,7 @@ def main() -> None:
         endpoint_rows.append(
             {
                 "variant": variant,
+                "torch_version": result["experiment_identity"]["environment"]["torch"],
                 "train_input_tokens": plan["train_input_tokens"],
                 "pure_training_gpu_hours": result["train_metrics"][
                     "pure_training_gpu_hours"
@@ -156,7 +173,7 @@ def main() -> None:
                 "full_validation_perplexity": full_final["perplexity"],
             }
         )
-    write_csv(REPORT_DIR / "efficiency_endpoint_summary_partial.csv", endpoint_rows)
+    write_csv(REPORT_DIR / "efficiency_endpoint_summary.csv", endpoint_rows)
 
     plt.rcParams.update(
         {
@@ -235,7 +252,7 @@ def main() -> None:
         (axes[1, 1], "cumulative_train_gpu_hours", "sciq_acc_norm", "sciq_acc_norm_stderr", "Training GPU hours", "SciQ normalized accuracy (%)"),
     )
     for axis, x_column, y_column, error_column, x_label, y_label in plot_specs:
-        for variant in ("raw", "minhashlsh"):
+        for variant in VARIANTS:
             rows = efficiency[variant]["curve_probe"]["rows"]
             x_values = [row[x_column] for row in rows]
             if x_column == "cumulative_train_tokens":
@@ -267,7 +284,7 @@ def main() -> None:
         legend_labels,
         loc="upper center",
         bbox_to_anchor=(0.5, 0.925),
-        ncol=2,
+        ncol=3,
         frameon=False,
     )
     figure.suptitle(
@@ -279,16 +296,17 @@ def main() -> None:
     figure.text(
         0.5,
         0.025,
-        "Diamonds mark one-epoch endpoints. LSHBloom is pending because its curve result is absent from S3.",
+        "Diamonds mark one-epoch endpoints. LSHBloom used PyTorch 2.6.0+cu124; Raw and MinHashLSH used 2.11.0+cu128.",
         ha="center",
         fontsize=9.5,
     )
-    figure.savefig(REPORT_DIR / "efficiency_curves_partial.png", dpi=220, bbox_inches="tight")
-    figure.savefig(REPORT_DIR / "efficiency_curves_partial.pdf", bbox_inches="tight")
+    figure.savefig(REPORT_DIR / "efficiency_curves.png", dpi=220, bbox_inches="tight")
+    figure.savefig(REPORT_DIR / "efficiency_curves.pdf", bbox_inches="tight")
     plt.close(figure)
 
     raw_endpoint = next(row for row in endpoint_rows if row["variant"] == "raw")
     minhash_endpoint = next(row for row in endpoint_rows if row["variant"] == "minhashlsh")
+    lshbloom_endpoint = next(row for row in endpoint_rows if row["variant"] == "lshbloom")
     print(
         json.dumps(
             {
@@ -298,6 +316,12 @@ def main() -> None:
                 * (1 - minhash_endpoint["pure_training_gpu_hours"] / raw_endpoint["pure_training_gpu_hours"]),
                 "minhash_full_validation_ppl_change_percent": 100
                 * (minhash_endpoint["full_validation_perplexity"] / raw_endpoint["full_validation_perplexity"] - 1),
+                "lshbloom_token_saving_percent": 100
+                * (1 - lshbloom_endpoint["train_input_tokens"] / raw_endpoint["train_input_tokens"]),
+                "lshbloom_gpu_hour_saving_percent": 100
+                * (1 - lshbloom_endpoint["pure_training_gpu_hours"] / raw_endpoint["pure_training_gpu_hours"]),
+                "lshbloom_full_validation_ppl_change_percent": 100
+                * (lshbloom_endpoint["full_validation_perplexity"] / raw_endpoint["full_validation_perplexity"] - 1),
                 "fixed_minhash_ppl_change_percent": 100 * (ppls[1] / ppls[0] - 1),
                 "fixed_lshbloom_ppl_change_percent": 100 * (ppls[2] / ppls[0] - 1),
             },
