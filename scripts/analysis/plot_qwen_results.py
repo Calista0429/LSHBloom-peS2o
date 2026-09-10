@@ -11,12 +11,12 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
 
-REPORT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
+REPORT_DIR = REPO_ROOT / "reports" / "qwen"
 SOURCE_DIR = REPORT_DIR / "source"
-REPO_ROOT = REPORT_DIR.parents[1]
-sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from src.efficiency_curves import (  # noqa: E402
+from lshbloom_pes2o.efficiency import (  # noqa: E402
     validate_curve_rows,
     validate_shared_experiment_results,
 )

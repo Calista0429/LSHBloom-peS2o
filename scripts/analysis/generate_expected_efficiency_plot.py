@@ -159,8 +159,9 @@ def main():
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path(__file__).resolve().parents[1]
-        / "figures"
+        default=Path(__file__).resolve().parents[2]
+        / "docs"
+        / "assets"
         / "expected-efficiency-curves.svg",
     )
     args = parser.parse_args()

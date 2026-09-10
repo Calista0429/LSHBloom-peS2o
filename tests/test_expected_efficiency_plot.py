@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-GENERATOR = ROOT / "scripts" / "generate_expected_efficiency_plot.py"
+GENERATOR = ROOT / "scripts" / "analysis" / "generate_expected_efficiency_plot.py"
 
 
 class ExpectedEfficiencyPlotTests(unittest.TestCase):

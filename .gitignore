@@ -3,4 +3,4 @@
 *.egg-info/
 __pycache__/
 *.py[cod]
-reports/qwen_results/source/*.json
+reports/qwen/source/*.json

@@ -46,3 +46,19 @@ def test_experiment_entry_points_are_grouped_by_responsibility():
     } == {"plamo2_1b_pes2o_continued_pretraining.ipynb"}
     assert not list((ROOT / "scripts").glob("build_*_notebook.py"))
     assert not list((ROOT / "notebooks").glob("*.ipynb"))
+
+
+def test_analysis_code_is_separate_from_generated_reports():
+    analysis_scripts = {
+        "generate_expected_efficiency_plot.py",
+        "plot_qwen_results.py",
+    }
+    assert {
+        path.name for path in (ROOT / "scripts" / "analysis").glob("*.py")
+    } == analysis_scripts
+    assert (ROOT / "reports" / "qwen" / "README.md").is_file()
+    assert (
+        ROOT / "docs" / "assets" / "expected-efficiency-curves.svg"
+    ).is_file()
+    assert not (ROOT / "reports" / "qwen_results").exists()
+    assert not (ROOT / "figures").exists()
