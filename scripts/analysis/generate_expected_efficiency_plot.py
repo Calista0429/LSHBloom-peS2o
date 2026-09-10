@@ -4,7 +4,6 @@ import argparse
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-
 SVG_NS = "http://www.w3.org/2000/svg"
 ET.register_namespace("", SVG_NS)
 
@@ -62,7 +61,12 @@ def draw_panel(root, x0, y0, width, height, title, x_key, y_key, x_label, y_labe
     element(
         root,
         "text",
-        {"x": str(x0 + width / 2), "y": str(y0 + 24), "class": "panel-title", "text-anchor": "middle"},
+        {
+            "x": str(x0 + width / 2),
+            "y": str(y0 + 24),
+            "class": "panel-title",
+            "text-anchor": "middle",
+        },
         title,
     )
     element(
@@ -81,17 +85,78 @@ def draw_panel(root, x0, y0, width, height, title, x_key, y_key, x_label, y_labe
         fraction = index / 5
         x_value = x_domain[0] + fraction * (x_domain[1] - x_domain[0])
         x_position = scale(x_value, x_domain, (plot_x0, plot_x1))
-        element(root, "line", {"x1": str(x_position), "x2": str(x_position), "y1": str(plot_y0), "y2": str(plot_y1), "class": "grid"})
-        element(root, "text", {"x": str(x_position), "y": str(plot_y1 + 20), "class": "tick", "text-anchor": "middle"}, f"{x_value:.1f}")
+        element(
+            root,
+            "line",
+            {
+                "x1": str(x_position),
+                "x2": str(x_position),
+                "y1": str(plot_y0),
+                "y2": str(plot_y1),
+                "class": "grid",
+            },
+        )
+        element(
+            root,
+            "text",
+            {
+                "x": str(x_position),
+                "y": str(plot_y1 + 20),
+                "class": "tick",
+                "text-anchor": "middle",
+            },
+            f"{x_value:.1f}",
+        )
 
         y_value = y_domain[0] + fraction * (y_domain[1] - y_domain[0])
         y_position = scale(y_value, y_domain, (plot_y1, plot_y0))
-        element(root, "line", {"x1": str(plot_x0), "x2": str(plot_x1), "y1": str(y_position), "y2": str(y_position), "class": "grid"})
+        element(
+            root,
+            "line",
+            {
+                "x1": str(plot_x0),
+                "x2": str(plot_x1),
+                "y1": str(y_position),
+                "y2": str(y_position),
+                "class": "grid",
+            },
+        )
         y_text = f"{y_value:.1f}"
-        element(root, "text", {"x": str(plot_x0 - 10), "y": str(y_position + 4), "class": "tick", "text-anchor": "end"}, y_text)
+        element(
+            root,
+            "text",
+            {
+                "x": str(plot_x0 - 10),
+                "y": str(y_position + 4),
+                "class": "tick",
+                "text-anchor": "end",
+            },
+            y_text,
+        )
 
-    element(root, "text", {"x": str((plot_x0 + plot_x1) / 2), "y": str(y0 + height - 10), "class": "axis-label", "text-anchor": "middle"}, x_label)
-    y_axis = element(root, "text", {"x": str(x0 + 17), "y": str((plot_y0 + plot_y1) / 2), "class": "axis-label", "text-anchor": "middle", "transform": f"rotate(-90 {x0 + 17} {(plot_y0 + plot_y1) / 2})"}, y_label)
+    element(
+        root,
+        "text",
+        {
+            "x": str((plot_x0 + plot_x1) / 2),
+            "y": str(y0 + height - 10),
+            "class": "axis-label",
+            "text-anchor": "middle",
+        },
+        x_label,
+    )
+    y_axis = element(
+        root,
+        "text",
+        {
+            "x": str(x0 + 17),
+            "y": str((plot_y0 + plot_y1) / 2),
+            "class": "axis-label",
+            "text-anchor": "middle",
+            "transform": f"rotate(-90 {x0 + 17} {(plot_y0 + plot_y1) / 2})",
+        },
+        y_label,
+    )
     y_axis.set("aria-label", y_label)
 
     for name, series in SERIES.items():
@@ -107,12 +172,25 @@ def draw_panel(root, x0, y0, width, height, title, x_key, y_key, x_label, y_labe
             ("M" if index == 0 else "L") + f" {x:.2f} {y:.2f}"
             for index, (x, y) in enumerate(points)
         )
-        element(root, "path", {"d": path_data, "stroke": series["color"], "class": "series"})
+        element(
+            root, "path", {"d": path_data, "stroke": series["color"], "class": "series"}
+        )
         for x, y in points:
-            element(root, "circle", {"cx": f"{x:.2f}", "cy": f"{y:.2f}", "r": "3.5", "fill": series["color"]})
+            element(
+                root,
+                "circle",
+                {
+                    "cx": f"{x:.2f}",
+                    "cy": f"{y:.2f}",
+                    "r": "3.5",
+                    "fill": series["color"],
+                },
+            )
         end_x, end_y = points[-1]
         diamond = f"M {end_x:.2f} {end_y - 6:.2f} L {end_x + 6:.2f} {end_y:.2f} L {end_x:.2f} {end_y + 6:.2f} L {end_x - 6:.2f} {end_y:.2f} Z"
-        element(root, "path", {"d": diamond, "fill": series["color"], "class": "endpoint"})
+        element(
+            root, "path", {"d": diamond, "fill": series["color"], "class": "endpoint"}
+        )
 
 
 def build_svg():
@@ -120,8 +198,16 @@ def build_svg():
         f"{{{SVG_NS}}}svg",
         {"viewBox": "0 0 1800 930", "width": "1200", "height": "620", "role": "img"},
     )
-    element(root, "title", text="Expected deduplication training efficiency curves using simulated data")
-    element(root, "desc", text="Four simulated plots compare Raw, MinHashLSH, and LSHBloom by token count and GPU hours.")
+    element(
+        root,
+        "title",
+        text="Expected deduplication training efficiency curves using simulated data",
+    )
+    element(
+        root,
+        "desc",
+        text="Four simulated plots compare Raw, MinHashLSH, and LSHBloom by token count and GPU hours.",
+    )
     style = element(root, "style")
     style.text = """
       .background { fill: #ffffff; }
@@ -137,20 +223,89 @@ def build_svg():
       .endpoint { stroke: #ffffff; stroke-width: 1.5; }
       .legend { font-size: 13px; }
     """
-    element(root, "rect", {"x": "0", "y": "0", "width": "1800", "height": "930", "class": "background"})
-    element(root, "text", {"x": "900", "y": "34", "class": "main-title", "text-anchor": "middle"}, "Expected peS2o deduplication efficiency curves")
-    element(root, "text", {"x": "900", "y": "58", "class": "subtitle", "text-anchor": "middle"}, "SIMULATED DATA — diamonds mark the end of one epoch")
+    element(
+        root,
+        "rect",
+        {"x": "0", "y": "0", "width": "1800", "height": "930", "class": "background"},
+    )
+    element(
+        root,
+        "text",
+        {"x": "900", "y": "34", "class": "main-title", "text-anchor": "middle"},
+        "Expected peS2o deduplication efficiency curves",
+    )
+    element(
+        root,
+        "text",
+        {"x": "900", "y": "58", "class": "subtitle", "text-anchor": "middle"},
+        "SIMULATED DATA — diamonds mark the end of one epoch",
+    )
 
     legend_x = 650
     for index, (name, series) in enumerate(SERIES.items()):
         x = legend_x + index * 190
-        element(root, "line", {"x1": str(x), "x2": str(x + 28), "y1": "83", "y2": "83", "stroke": series["color"], "stroke-width": "3"})
+        element(
+            root,
+            "line",
+            {
+                "x1": str(x),
+                "x2": str(x + 28),
+                "y1": "83",
+                "y2": "83",
+                "stroke": series["color"],
+                "stroke-width": "3",
+            },
+        )
         element(root, "text", {"x": str(x + 37), "y": "88", "class": "legend"}, name)
 
-    draw_panel(root, 200, 100, 670, 390, "Validation perplexity vs. training tokens", "tokens", "ppl", "Cumulative training tokens (millions)", "Validation perplexity")
-    draw_panel(root, 930, 100, 670, 390, "SciQ normalized accuracy vs. training tokens", "tokens", "acc", "Cumulative training tokens (millions)", "Accuracy (%)")
-    draw_panel(root, 200, 510, 670, 390, "Validation perplexity vs. GPU hours", "hours", "ppl", "Cumulative training GPU hours", "Validation perplexity")
-    draw_panel(root, 930, 510, 670, 390, "SciQ normalized accuracy vs. GPU hours", "hours", "acc", "Cumulative training GPU hours", "Accuracy (%)")
+    draw_panel(
+        root,
+        200,
+        100,
+        670,
+        390,
+        "Validation perplexity vs. training tokens",
+        "tokens",
+        "ppl",
+        "Cumulative training tokens (millions)",
+        "Validation perplexity",
+    )
+    draw_panel(
+        root,
+        930,
+        100,
+        670,
+        390,
+        "SciQ normalized accuracy vs. training tokens",
+        "tokens",
+        "acc",
+        "Cumulative training tokens (millions)",
+        "Accuracy (%)",
+    )
+    draw_panel(
+        root,
+        200,
+        510,
+        670,
+        390,
+        "Validation perplexity vs. GPU hours",
+        "hours",
+        "ppl",
+        "Cumulative training GPU hours",
+        "Validation perplexity",
+    )
+    draw_panel(
+        root,
+        930,
+        510,
+        670,
+        390,
+        "SciQ normalized accuracy vs. GPU hours",
+        "hours",
+        "acc",
+        "Cumulative training GPU hours",
+        "Accuracy (%)",
+    )
     return ET.ElementTree(root)
 
 

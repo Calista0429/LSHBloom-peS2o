@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 
 from lshbloom_pes2o.dedup import (
-    build_indexes,
     DedupConfig,
+    build_indexes,
     normalize_unigrams,
     per_filter_fp,
     prepare_variants,
@@ -150,7 +150,9 @@ class PrepareVariantsTests(unittest.TestCase):
             )
 
             def read_ids(relative_path):
-                with gzip.open(output_dir / relative_path, "rt", encoding="utf-8") as stream:
+                with gzip.open(
+                    output_dir / relative_path, "rt", encoding="utf-8"
+                ) as stream:
                     return [json.loads(line)["id"] for line in stream]
 
             self.assertEqual(read_ids("raw/train.jsonl.gz"), ["first", "other", "copy"])

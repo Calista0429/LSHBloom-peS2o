@@ -135,9 +135,7 @@ class FakeModel:
 class CoreTests(unittest.TestCase):
     def test_validate_record_rejects_wrong_source(self):
         with self.assertRaisesRegex(ValueError, "expected source s2orc"):
-            validate_record(
-                {"id": "x", "source": "s2ag", "text": "valid"}, "s2orc"
-            )
+            validate_record({"id": "x", "source": "s2ag", "text": "valid"}, "s2orc")
 
     def test_validate_record_rejects_empty_text(self):
         with self.assertRaisesRegex(ValueError, "field 'text'"):
@@ -210,9 +208,7 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(packed[0]["labels"], [1, 2, 99, 3])
         self.assertEqual(packed[1]["input_ids"], [4, 5, 99, 99])
         self.assertEqual(packed[1]["labels"], [4, 5, 99, -100])
-        self.assertEqual(
-            [item["document_ids"] for item in packed], [["a", "b"], ["b"]]
-        )
+        self.assertEqual([item["document_ids"] for item in packed], [["a", "b"], ["b"]])
 
     def test_combination_uses_predicted_token_weights(self):
         combined = combine_source_metrics(

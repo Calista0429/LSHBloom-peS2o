@@ -9,7 +9,6 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
-
 SUPPORTED_SOURCES = {"s2orc", "s2ag"}
 
 
@@ -296,7 +295,9 @@ def write_result_json(path: str | Path, result: dict) -> Path:
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
-        json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False)
+        json.dumps(
+            result, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False
+        )
         + "\n",
         encoding="utf-8",
     )

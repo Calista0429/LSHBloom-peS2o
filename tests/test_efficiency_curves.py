@@ -14,7 +14,6 @@ from lshbloom_pes2o.efficiency import (
     write_curve_csv,
 )
 
-
 TOKEN_COUNTS = {
     "raw": 31_410_586,
     "minhashlsh": 28_805_685,

@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 CORE_PATH = ROOT / "src" / "lshbloom_pes2o" / "sciq.py"
 OUTPUT_PATH = ROOT / "notebooks" / "qwen" / "qwen_pes2o_sciq_evaluation.ipynb"

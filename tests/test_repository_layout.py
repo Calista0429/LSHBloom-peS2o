@@ -1,7 +1,6 @@
 import re
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "src" / "lshbloom_pes2o"
 
@@ -42,9 +41,9 @@ def test_experiment_entry_points_are_grouped_by_responsibility():
     assert {
         path.name for path in (ROOT / "notebooks" / "qwen").glob("*.ipynb")
     } == qwen_notebooks
-    assert {
-        path.name for path in (ROOT / "notebooks" / "plamo").glob("*.ipynb")
-    } == {"plamo2_1b_pes2o_continued_pretraining.ipynb"}
+    assert {path.name for path in (ROOT / "notebooks" / "plamo").glob("*.ipynb")} == {
+        "plamo2_1b_pes2o_continued_pretraining.ipynb"
+    }
     assert not list((ROOT / "scripts").glob("build_*_notebook.py"))
     assert not list((ROOT / "notebooks").glob("*.ipynb"))
 
@@ -58,9 +57,7 @@ def test_analysis_code_is_separate_from_generated_reports():
         path.name for path in (ROOT / "scripts" / "analysis").glob("*.py")
     } == analysis_scripts
     assert (ROOT / "reports" / "qwen" / "README.md").is_file()
-    assert (
-        ROOT / "docs" / "assets" / "expected-efficiency-curves.svg"
-    ).is_file()
+    assert (ROOT / "docs" / "assets" / "expected-efficiency-curves.svg").is_file()
     assert not (ROOT / "reports" / "qwen_results").exists()
     assert not (ROOT / "figures").exists()
 

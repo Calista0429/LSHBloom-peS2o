@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 TRAINING_CORE_PATH = ROOT / "src" / "lshbloom_pes2o" / "training.py"
 EVALUATION_CORE_PATH = ROOT / "src" / "lshbloom_pes2o" / "perplexity.py"

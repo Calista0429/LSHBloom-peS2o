@@ -102,9 +102,7 @@ class MetricExtractionTests(unittest.TestCase):
 
     def test_rejects_wrong_stage_sample_count(self):
         with self.assertRaisesRegex(ValueError, "expected 1000"):
-            extract_sciq_metrics(
-                harness_result(effective=999), "raw", "full", 1.0, 0
-            )
+            extract_sciq_metrics(harness_result(effective=999), "raw", "full", 1.0, 0)
 
     def test_rejects_non_positive_elapsed_time(self):
         with self.assertRaisesRegex(ValueError, "elapsed_seconds"):
@@ -176,7 +174,9 @@ class SerializationTests(unittest.TestCase):
             returned = write_json(path, {"score": 0.48})
 
             self.assertEqual(returned, path)
-            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"score": 0.48})
+            self.assertEqual(
+                json.loads(path.read_text(encoding="utf-8")), {"score": 0.48}
+            )
 
     def test_write_json_rejects_non_finite_numbers(self):
         with tempfile.TemporaryDirectory() as directory:

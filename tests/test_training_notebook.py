@@ -4,7 +4,6 @@ import sys
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK_PATH = ROOT / "notebooks" / "qwen" / "qwen_pes2o_continued_pretraining.ipynb"
 GENERATOR_PATH = ROOT / "scripts" / "notebooks" / "build_training_notebook.py"
@@ -42,9 +41,7 @@ class TrainingNotebookTests(unittest.TestCase):
 
     def test_notebook_embeds_both_tested_helpers(self):
         code = self.combined_code()
-        training_core = (
-            ROOT / "src" / "lshbloom_pes2o" / "training.py"
-        ).read_text()
+        training_core = (ROOT / "src" / "lshbloom_pes2o" / "training.py").read_text()
         evaluation_core = (
             ROOT / "src" / "lshbloom_pes2o" / "perplexity.py"
         ).read_text()
@@ -82,10 +79,10 @@ class TrainingNotebookTests(unittest.TestCase):
             'userdata.get("WANDB_API_KEY")',
             '"lshbloom-pes2o"',
             '"qwen2.5-0.5b-pes2o-dedup-25m"',
-            's3://calista-bucket/pes2o/v2/experiments/pilot-5000/',
+            "s3://calista-bucket/pes2o/v2/experiments/pilot-5000/",
             'manifest["variants"][VARIANT]["sha256"]',
             'raise RuntimeError("Dataset SHA-256 mismatch")',
-            'checkpoints/{VARIANT}',
+            "checkpoints/{VARIANT}",
         ):
             self.assertIn(required, code)
 
@@ -98,8 +95,8 @@ class TrainingNotebookTests(unittest.TestCase):
             "validation-00000-of-00002.json.gz",
             "validation-00001-of-00002.json.gz",
             'wandb.log({"smoke_test/passed": 1',
-            'trainer.train()',
-            'combine_source_metrics(source_results.values())',
+            "trainer.train()",
+            "combine_source_metrics(source_results.values())",
             '"eval/overall_perplexity"',
         ):
             self.assertIn(required, code)

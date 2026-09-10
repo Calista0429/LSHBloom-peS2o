@@ -5,9 +5,10 @@ import sys
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
-TRAIN_GENERATOR = ROOT / "scripts" / "notebooks" / "build_efficiency_training_notebook.py"
+TRAIN_GENERATOR = (
+    ROOT / "scripts" / "notebooks" / "build_efficiency_training_notebook.py"
+)
 PLOT_GENERATOR = ROOT / "scripts" / "notebooks" / "build_efficiency_plot_notebook.py"
 TRAIN_NOTEBOOK = ROOT / "notebooks" / "qwen" / "qwen_pes2o_efficiency_training.ipynb"
 PLOT_NOTEBOOK = ROOT / "notebooks" / "qwen" / "qwen_pes2o_efficiency_curves.ipynb"
@@ -57,7 +58,7 @@ class EfficiencyNotebookTests(unittest.TestCase):
         self.assertIn('CONFIG["sciq_examples"]', code)
         self.assertIn('CONFIG["sciq_smoke_examples"]', code)
         self.assertIn('"sciq_smoke_examples": 10', code)
-        self.assertIn('bootstrap_iters=100', code)
+        self.assertIn("bootstrap_iters=100", code)
         self.assertIn('"smoke/sciq_examples": smoke_metrics["examples"]', code)
         self.assertIn('"required_gpu_substring": "V100"', code)
         self.assertIn('if CONFIG["required_gpu_substring"] not in gpu_name:', code)
@@ -70,7 +71,7 @@ class EfficiencyNotebookTests(unittest.TestCase):
         self.assertIn("source_manifest_sha256", code)
         self.assertIn("SCIQ_REVISION", code)
         self.assertIn('"dataset_kwargs": {"revision": SCIQ_REVISION}', code)
-        self.assertIn('tasks=[SCIQ_TASK]', code)
+        self.assertIn("tasks=[SCIQ_TASK]", code)
         self.assertIn('lr_scheduler_type="constant_with_warmup"', code)
         self.assertIn('warmup_steps=CONFIG["warmup_steps"]', code)
         self.assertNotIn('warmup_ratio=CONFIG["warmup_ratio"]', code)
@@ -85,7 +86,7 @@ class EfficiencyNotebookTests(unittest.TestCase):
         self.assertIn("save_only_model=True", code)
         self.assertIn('np.stack([feature["input_ids"] for feature in features])', code)
         self.assertIn(
-            'data=[[row[column] for column in CURVE_COLUMNS] for row in curve_rows]',
+            "data=[[row[column] for column in CURVE_COLUMNS] for row in curve_rows]",
             code,
         )
 
@@ -110,10 +111,7 @@ class EfficiencyNotebookTests(unittest.TestCase):
             self.assertIsNone(han.search(notebook_text), path.name)
 
     def test_generators_are_deterministic(self):
-        before = {
-            path: path.read_bytes()
-            for path in (TRAIN_NOTEBOOK, PLOT_NOTEBOOK)
-        }
+        before = {path: path.read_bytes() for path in (TRAIN_NOTEBOOK, PLOT_NOTEBOOK)}
         for generator in (TRAIN_GENERATOR, PLOT_GENERATOR):
             result = subprocess.run(
                 [sys.executable, str(generator)],

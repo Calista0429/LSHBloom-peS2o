@@ -7,7 +7,6 @@ import math
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
-
 VARIANTS = ("raw", "minhashlsh", "lshbloom")
 CURVE_COLUMNS = (
     "variant",
@@ -35,7 +34,9 @@ def canonical_sha256(value: object) -> str:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as error:
-        raise ValueError("value must contain only finite JSON-compatible data") from error
+        raise ValueError(
+            "value must contain only finite JSON-compatible data"
+        ) from error
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -51,7 +52,9 @@ def validate_shared_experiment_results(
 
     variants = [result.get("variant") for result in results]
     if set(variants) != set(expected_variants) or len(set(variants)) != len(variants):
-        raise ValueError("experiment result variants do not match the expected variants")
+        raise ValueError(
+            "experiment result variants do not match the expected variants"
+        )
 
     verified = []
     for result in results:
@@ -154,7 +157,9 @@ def tokens_at_step(
     return min(global_step * tokens_per_optimizer_step, total_train_tokens)
 
 
-def _index_measurements(rows: Iterable[dict], label: str) -> dict[tuple[str, int], dict]:
+def _index_measurements(
+    rows: Iterable[dict], label: str
+) -> dict[tuple[str, int], dict]:
     indexed = {}
     for row in rows:
         if not isinstance(row, dict):
@@ -172,7 +177,9 @@ def _index_measurements(rows: Iterable[dict], label: str) -> dict[tuple[str, int
                 f"each {label} measurement requires integer global_step"
             ) from error
         if step < 0:
-            raise ValueError(f"each {label} measurement requires non-negative global_step")
+            raise ValueError(
+                f"each {label} measurement requires non-negative global_step"
+            )
         key = (variant, step)
         if key in indexed:
             raise ValueError(f"duplicate {label} measurement: {variant} step {step}")
@@ -194,7 +201,14 @@ def merge_curve_measurements(
         )
 
     merged = []
-    for key in sorted(validation, key=lambda item: (VARIANTS.index(item[0]) if item[0] in VARIANTS else len(VARIANTS), item[0], item[1])):
+    for key in sorted(
+        validation,
+        key=lambda item: (
+            VARIANTS.index(item[0]) if item[0] in VARIANTS else len(VARIANTS),
+            item[0],
+            item[1],
+        ),
+    ):
         row = dict(validation[key])
         for field, value in sciq[key].items():
             if field in ("variant", "global_step"):

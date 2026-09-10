@@ -10,7 +10,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REPORT_DIR = REPO_ROOT / "reports" / "qwen"
 SOURCE_DIR = REPORT_DIR / "source"
@@ -20,7 +19,6 @@ from lshbloom_pes2o.efficiency import (  # noqa: E402
     validate_curve_rows,
     validate_shared_experiment_results,
 )
-
 
 VARIANTS = ("raw", "minhashlsh", "lshbloom")
 LABELS = {
@@ -72,9 +70,7 @@ def identity_without_torch(result: dict) -> dict:
 
 
 def main() -> None:
-    fixed = {
-        variant: load_json(f"fixed-{variant}.json") for variant in VARIANTS
-    }
+    fixed = {variant: load_json(f"fixed-{variant}.json") for variant in VARIANTS}
     fixed_configs = {
         json.dumps(result["config"], sort_keys=True) for result in fixed.values()
     }
@@ -116,8 +112,7 @@ def main() -> None:
     write_csv(REPORT_DIR / "fixed_token_summary.csv", fixed_rows)
 
     efficiency = {
-        variant: load_json(f"efficiency-{variant}.json")
-        for variant in VARIANTS
+        variant: load_json(f"efficiency-{variant}.json") for variant in VARIANTS
     }
     for variant, result in efficiency.items():
         validate_shared_experiment_results([result], expected_variants=(variant,))
@@ -131,8 +126,7 @@ def main() -> None:
     if len({probe["probe_sha256"] for probe in probes}) != 1:
         raise ValueError("Validation probe hashes differ")
     sequence_hashes = {
-        json.dumps(probe["sequence_token_sha256"], sort_keys=True)
-        for probe in probes
+        json.dumps(probe["sequence_token_sha256"], sort_keys=True) for probe in probes
     }
     if len(sequence_hashes) != 1:
         raise ValueError("Validation sequence hashes differ")
@@ -151,7 +145,9 @@ def main() -> None:
         rows = result["curve_probe"]["rows"]
         validate_curve_rows(rows, expected_variants=(variant,))
         curve_rows.extend(rows)
-    curve_rows.sort(key=lambda row: (VARIANTS.index(row["variant"]), row["global_step"]))
+    curve_rows.sort(
+        key=lambda row: (VARIANTS.index(row["variant"]), row["global_step"])
+    )
     write_csv(REPORT_DIR / "efficiency_curve.csv", curve_rows)
 
     endpoint_rows = []
@@ -194,7 +190,13 @@ def main() -> None:
     ppls = [row["validation_perplexity"] for row in fixed_rows]
     axes[0].scatter(x, ppls, c=colors, s=75, zorder=3)
     for index, value in enumerate(ppls):
-        axes[0].annotate(f"{value:.4f}", (index, value), xytext=(0, 9), textcoords="offset points", ha="center")
+        axes[0].annotate(
+            f"{value:.4f}",
+            (index, value),
+            xytext=(0, 9),
+            textcoords="offset points",
+            ha="center",
+        )
     axes[0].set_xticks(x, labels)
     axes[0].set_ylabel("Validation perplexity (lower is better)")
     axes[0].set_title("peS2o validation")
@@ -230,8 +232,12 @@ def main() -> None:
     width = 0.34
     s2orc = [row["s2orc_perplexity"] for row in fixed_rows]
     s2ag = [row["s2ag_perplexity"] for row in fixed_rows]
-    axes[2].bar([value - width / 2 for value in x], s2orc, width, color="#72B7B2", label="S2ORC")
-    axes[2].bar([value + width / 2 for value in x], s2ag, width, color="#E45756", label="S2AG")
+    axes[2].bar(
+        [value - width / 2 for value in x], s2orc, width, color="#72B7B2", label="S2ORC"
+    )
+    axes[2].bar(
+        [value + width / 2 for value in x], s2ag, width, color="#E45756", label="S2AG"
+    )
     axes[2].set_xticks(x, labels)
     axes[2].set_ylabel("Validation perplexity (lower is better)")
     axes[2].set_title("peS2o source breakdown")
@@ -239,17 +245,51 @@ def main() -> None:
     axes[2].set_ylim(9.5, 15.2)
     style_axis(axes[2])
 
-    figure.suptitle("Qwen2.5-0.5B: equal-token comparison (24,999,936 tokens)", fontsize=15, fontweight="bold")
-    figure.savefig(REPORT_DIR / "fixed_token_comparison.png", dpi=220, bbox_inches="tight")
+    figure.suptitle(
+        "Qwen2.5-0.5B: equal-token comparison (24,999,936 tokens)",
+        fontsize=15,
+        fontweight="bold",
+    )
+    figure.savefig(
+        REPORT_DIR / "fixed_token_comparison.png", dpi=220, bbox_inches="tight"
+    )
     figure.savefig(REPORT_DIR / "fixed_token_comparison.pdf", bbox_inches="tight")
     plt.close(figure)
 
     figure, axes = plt.subplots(2, 2, figsize=(12.5, 8))
     plot_specs = (
-        (axes[0, 0], "cumulative_train_tokens", "validation_perplexity", None, "Training tokens", "Probe perplexity (lower is better)"),
-        (axes[0, 1], "cumulative_train_gpu_hours", "validation_perplexity", None, "Training GPU hours", "Probe perplexity (lower is better)"),
-        (axes[1, 0], "cumulative_train_tokens", "sciq_acc_norm", "sciq_acc_norm_stderr", "Training tokens", "SciQ normalized accuracy (%)"),
-        (axes[1, 1], "cumulative_train_gpu_hours", "sciq_acc_norm", "sciq_acc_norm_stderr", "Training GPU hours", "SciQ normalized accuracy (%)"),
+        (
+            axes[0, 0],
+            "cumulative_train_tokens",
+            "validation_perplexity",
+            None,
+            "Training tokens",
+            "Probe perplexity (lower is better)",
+        ),
+        (
+            axes[0, 1],
+            "cumulative_train_gpu_hours",
+            "validation_perplexity",
+            None,
+            "Training GPU hours",
+            "Probe perplexity (lower is better)",
+        ),
+        (
+            axes[1, 0],
+            "cumulative_train_tokens",
+            "sciq_acc_norm",
+            "sciq_acc_norm_stderr",
+            "Training tokens",
+            "SciQ normalized accuracy (%)",
+        ),
+        (
+            axes[1, 1],
+            "cumulative_train_gpu_hours",
+            "sciq_acc_norm",
+            "sciq_acc_norm_stderr",
+            "Training GPU hours",
+            "SciQ normalized accuracy (%)",
+        ),
     )
     for axis, x_column, y_column, error_column, x_label, y_label in plot_specs:
         for variant in VARIANTS:
@@ -271,12 +311,27 @@ def main() -> None:
                 axis.errorbar(x_values, y_values, yerr=errors, capsize=2, **kwargs)
             else:
                 axis.plot(x_values, y_values, **kwargs)
-            axis.scatter(x_values[-1], y_values[-1], color=COLORS[variant], marker="D", s=45, zorder=4)
-        axis.set_xlabel(f"{x_label} (millions)" if x_column == "cumulative_train_tokens" else x_label)
+            axis.scatter(
+                x_values[-1],
+                y_values[-1],
+                color=COLORS[variant],
+                marker="D",
+                s=45,
+                zorder=4,
+            )
+        axis.set_xlabel(
+            f"{x_label} (millions)"
+            if x_column == "cumulative_train_tokens"
+            else x_label
+        )
         axis.set_ylabel(y_label)
         style_axis(axis)
-    axes[0, 0].xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:.0f}M"))
-    axes[1, 0].xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:.0f}M"))
+    axes[0, 0].xaxis.set_major_formatter(
+        FuncFormatter(lambda value, _: f"{value:.0f}M")
+    )
+    axes[1, 0].xaxis.set_major_formatter(
+        FuncFormatter(lambda value, _: f"{value:.0f}M")
+    )
     handles, legend_labels = axes[0, 0].get_legend_handles_labels()
     figure.subplots_adjust(top=0.87, bottom=0.12, hspace=0.34, wspace=0.22)
     figure.legend(
@@ -305,23 +360,51 @@ def main() -> None:
     plt.close(figure)
 
     raw_endpoint = next(row for row in endpoint_rows if row["variant"] == "raw")
-    minhash_endpoint = next(row for row in endpoint_rows if row["variant"] == "minhashlsh")
-    lshbloom_endpoint = next(row for row in endpoint_rows if row["variant"] == "lshbloom")
+    minhash_endpoint = next(
+        row for row in endpoint_rows if row["variant"] == "minhashlsh"
+    )
+    lshbloom_endpoint = next(
+        row for row in endpoint_rows if row["variant"] == "lshbloom"
+    )
     print(
         json.dumps(
             {
                 "minhash_token_saving_percent": 100
-                * (1 - minhash_endpoint["train_input_tokens"] / raw_endpoint["train_input_tokens"]),
+                * (
+                    1
+                    - minhash_endpoint["train_input_tokens"]
+                    / raw_endpoint["train_input_tokens"]
+                ),
                 "minhash_gpu_hour_saving_percent": 100
-                * (1 - minhash_endpoint["pure_training_gpu_hours"] / raw_endpoint["pure_training_gpu_hours"]),
+                * (
+                    1
+                    - minhash_endpoint["pure_training_gpu_hours"]
+                    / raw_endpoint["pure_training_gpu_hours"]
+                ),
                 "minhash_full_validation_ppl_change_percent": 100
-                * (minhash_endpoint["full_validation_perplexity"] / raw_endpoint["full_validation_perplexity"] - 1),
+                * (
+                    minhash_endpoint["full_validation_perplexity"]
+                    / raw_endpoint["full_validation_perplexity"]
+                    - 1
+                ),
                 "lshbloom_token_saving_percent": 100
-                * (1 - lshbloom_endpoint["train_input_tokens"] / raw_endpoint["train_input_tokens"]),
+                * (
+                    1
+                    - lshbloom_endpoint["train_input_tokens"]
+                    / raw_endpoint["train_input_tokens"]
+                ),
                 "lshbloom_gpu_hour_saving_percent": 100
-                * (1 - lshbloom_endpoint["pure_training_gpu_hours"] / raw_endpoint["pure_training_gpu_hours"]),
+                * (
+                    1
+                    - lshbloom_endpoint["pure_training_gpu_hours"]
+                    / raw_endpoint["pure_training_gpu_hours"]
+                ),
                 "lshbloom_full_validation_ppl_change_percent": 100
-                * (lshbloom_endpoint["full_validation_perplexity"] / raw_endpoint["full_validation_perplexity"] - 1),
+                * (
+                    lshbloom_endpoint["full_validation_perplexity"]
+                    / raw_endpoint["full_validation_perplexity"]
+                    - 1
+                ),
                 "fixed_minhash_ppl_change_percent": 100 * (ppls[1] / ppls[0] - 1),
                 "fixed_lshbloom_ppl_change_percent": 100 * (ppls[2] / ppls[0] - 1),
             },

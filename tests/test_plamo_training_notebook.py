@@ -5,12 +5,9 @@ import sys
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = ROOT / "scripts" / "notebooks" / "build_plamo_training_notebook.py"
-NOTEBOOK = (
-    ROOT / "notebooks" / "plamo" / "plamo2_1b_pes2o_continued_pretraining.ipynb"
-)
+NOTEBOOK = ROOT / "notebooks" / "plamo" / "plamo2_1b_pes2o_continued_pretraining.ipynb"
 
 
 def code_cells():
@@ -47,13 +44,13 @@ class PlamoTrainingNotebookTests(unittest.TestCase):
             '"model_id": "pfnet/plamo-2-1b"',
             '"model_revision": "92c75fd6eea9018bcb9c33ee8921589febe071fa"',
             '"required_gpu_substring": "A100"',
-            'trust_remote_code=True',
+            "trust_remote_code=True",
             '"torch_version": "2.5.1"',
             '"transformers_version": "4.57.1"',
             '"mamba_ssm_version": "2.2.4"',
             '"causal_conv1d_version": "1.4.0"',
-            'import mamba_ssm',
-            'import causal_conv1d',
+            "import mamba_ssm",
+            "import causal_conv1d",
         ):
             self.assertIn(required, code)
 
@@ -68,7 +65,7 @@ class PlamoTrainingNotebookTests(unittest.TestCase):
         self.assertIn("from transformers import AutoModelForCausalLM", setup)
         self.assertEqual(setup.count("os.kill(os.getpid(), 9)"), 1)
         self.assertLess(
-            setup.rindex('f"mamba-ssm=={REQUIRED[\'mamba_ssm_version\']}"'),
+            setup.rindex("f\"mamba-ssm=={REQUIRED['mamba_ssm_version']}\""),
             setup.index("os.kill(os.getpid(), 9)"),
         )
 
@@ -127,7 +124,7 @@ class PlamoTrainingNotebookTests(unittest.TestCase):
             '"s2ag_documents": 680',
             "VALIDATION_REVISION",
             "combine_source_metrics(source_results.values())",
-            'plamo-2-1b-equal-24883200/checkpoints/{VARIANT}',
+            "plamo-2-1b-equal-24883200/checkpoints/{VARIANT}",
             "del trainer",
             "s3.put_object(",
             "s3.delete_object(",

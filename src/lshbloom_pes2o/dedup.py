@@ -88,9 +88,7 @@ def build_indexes(
         save_dir=str(bloom_save_dir) if bloom_save_dir is not None else None,
         params=(minhash_index.b, minhash_index.r),
     )
-    actual_effective_fp = -math.expm1(
-        minhash_index.b * math.log1p(-filter_fp)
-    )
+    actual_effective_fp = -math.expm1(minhash_index.b * math.log1p(-filter_fp))
     metadata = {
         "bands": minhash_index.b,
         "rows_per_band": minhash_index.r,
@@ -141,7 +139,9 @@ def iter_local_jsonl_gz(path: Path | str) -> Iterator[dict]:
             try:
                 record = json.loads(line)
             except json.JSONDecodeError as error:
-                raise ValueError(f"invalid JSON at line {line_number} in {path}") from error
+                raise ValueError(
+                    f"invalid JSON at line {line_number} in {path}"
+                ) from error
             yield validate_record(record)
 
 
@@ -225,11 +225,12 @@ def prepare_variants(
         "lshbloom": "lshbloom/train.jsonl.gz",
     }
 
-    with tempfile.TemporaryDirectory(
-        prefix=f".{output_dir.name}-staging-", dir=output_dir.parent
-    ) as staging_name, tempfile.TemporaryDirectory(
-        prefix="pes2o-lshbloom-index-"
-    ) as bloom_index_dir:
+    with (
+        tempfile.TemporaryDirectory(
+            prefix=f".{output_dir.name}-staging-", dir=output_dir.parent
+        ) as staging_name,
+        tempfile.TemporaryDirectory(prefix="pes2o-lshbloom-index-") as bloom_index_dir,
+    ):
         staging_dir = Path(staging_name)
         minhash_index, bloom_index, index_metadata = build_indexes(
             threshold=config.threshold,
@@ -286,7 +287,10 @@ def prepare_variants(
 
                 if decision.minhashlsh_duplicate != decision.lshbloom_duplicate:
                     differing_ids.append(record_id)
-                if progress_callback is not None and input_documents % progress_every == 0:
+                if (
+                    progress_callback is not None
+                    and input_documents % progress_every == 0
+                ):
                     progress_callback(input_documents)
 
         if input_documents != config.expected_documents:
@@ -312,7 +316,9 @@ def prepare_variants(
         training_gate_passes = maximum_removal_rate >= config.training_gate_rate
         tokenizer_name = None
         if tokenizer is not None:
-            tokenizer_name = getattr(tokenizer, "name_or_path", type(tokenizer).__name__)
+            tokenizer_name = getattr(
+                tokenizer, "name_or_path", type(tokenizer).__name__
+            )
 
         manifest = {
             "schema_version": 1,
@@ -348,7 +354,9 @@ def prepare_variants(
                 "maximum_observed_removal_rate": maximum_removal_rate,
                 "passes": training_gate_passes,
                 "next_action": (
-                    "train_25m_tokens" if training_gate_passes else "expand_to_50000_documents"
+                    "train_25m_tokens"
+                    if training_gate_passes
+                    else "expand_to_50000_documents"
                 ),
             },
             "runtime_seconds": time.perf_counter() - start,

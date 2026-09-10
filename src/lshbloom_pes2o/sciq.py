@@ -7,7 +7,6 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
-
 VARIANTS = ("raw", "minhashlsh", "lshbloom")
 STAGE_SAMPLE_COUNTS = {"smoke": 10, "full": 1000}
 METRIC_KEYS = {

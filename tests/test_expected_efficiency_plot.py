@@ -5,7 +5,6 @@ import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = ROOT / "scripts" / "analysis" / "generate_expected_efficiency_plot.py"
 

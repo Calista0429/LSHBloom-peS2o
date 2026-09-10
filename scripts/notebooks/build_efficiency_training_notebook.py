@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_PATH = ROOT / "notebooks" / "qwen" / "qwen_pes2o_efficiency_training.ipynb"
 CORE_PATHS = (

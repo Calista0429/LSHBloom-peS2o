@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 CORE_PATH = ROOT / "src" / "lshbloom_pes2o" / "efficiency.py"
 OUTPUT_PATH = ROOT / "notebooks" / "qwen" / "qwen_pes2o_efficiency_curves.ipynb"
@@ -56,7 +55,9 @@ print("Dependencies installed.")
 """
         ),
         code_cell(core, tags=["embedded-efficiency-curves"]),
-        markdown_cell("""## 1. Download and validate the three real experiment results"""),
+        markdown_cell(
+            """## 1. Download and validate the three real experiment results"""
+        ),
         code_cell(
             """import json
 import os
@@ -171,7 +172,9 @@ summary.to_csv(OUTPUT_DIR / "final-efficiency-summary.csv", index=False)
 display(summary)
 """
         ),
-        markdown_cell("""## 3. Plot perplexity and SciQ accuracy against tokens and GPU hours"""),
+        markdown_cell(
+            """## 3. Plot perplexity and SciQ accuracy against tokens and GPU hours"""
+        ),
         code_cell(
             """LABELS = {
     "raw": "Raw",

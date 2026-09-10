@@ -19,7 +19,9 @@ def _iter_records(path: Path) -> Iterator[dict]:
             try:
                 record = json.loads(line)
             except json.JSONDecodeError as error:
-                raise ValueError(f"invalid JSON at line {line_number} in {path}") from error
+                raise ValueError(
+                    f"invalid JSON at line {line_number} in {path}"
+                ) from error
             if not isinstance(record, dict):
                 raise ValueError(f"record at line {line_number} must be an object")
             for field in ("id", "text"):
@@ -79,8 +81,12 @@ def pack_jsonl_gz_to_memmap(
         for record in _iter_records(input_path):
             token_ids = tokenizer.encode(record["text"], add_special_tokens=False)
             token_ids.append(eos_token_id)
-            if token_ids and (min(token_ids) < 0 or max(token_ids) > np.iinfo(np.uint32).max):
-                raise ValueError(f"token id outside uint32 range in document {record['id']}")
+            if token_ids and (
+                min(token_ids) < 0 or max(token_ids) > np.iinfo(np.uint32).max
+            ):
+                raise ValueError(
+                    f"token id outside uint32 range in document {record['id']}"
+                )
 
             documents_read += 1
             last_document_id = record["id"]

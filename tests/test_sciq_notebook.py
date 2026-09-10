@@ -5,7 +5,6 @@ import sys
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK_PATH = ROOT / "notebooks" / "qwen" / "qwen_pes2o_sciq_evaluation.ipynb"
 GENERATOR_PATH = ROOT / "scripts" / "notebooks" / "build_sciq_notebook.py"
@@ -40,9 +39,9 @@ class SciQNotebookTests(unittest.TestCase):
                 compile("".join(cell["source"]), f"cell-{index}", "exec")
 
     def test_notebook_embeds_tested_result_helpers(self):
-        source = (
-            ROOT / "src" / "lshbloom_pes2o" / "sciq.py"
-        ).read_text(encoding="utf-8")
+        source = (ROOT / "src" / "lshbloom_pes2o" / "sciq.py").read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn(source, self.combined_code())
 
@@ -56,9 +55,9 @@ class SciQNotebookTests(unittest.TestCase):
             '"smoke_limit": 10',
             '"full_limit": None',
             '"dtype": "float16"',
-            'apply_chat_template=False',
+            "apply_chat_template=False",
             'tasks=[CONFIG["task"]]',
-            'simple_evaluate(',
+            "simple_evaluate(",
         )
         for item in required:
             self.assertIn(item, code)

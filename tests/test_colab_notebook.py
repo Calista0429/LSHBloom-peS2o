@@ -2,7 +2,6 @@ import json
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK = ROOT / "notebooks" / "qwen" / "qwen_pes2o_validation_perplexity.ipynb"
 CORE = ROOT / "src" / "lshbloom_pes2o" / "perplexity.py"
@@ -37,11 +36,15 @@ class ColabNotebookTests(unittest.TestCase):
         ]
 
         self.assertEqual(len(core_cells), 1)
-        self.assertEqual("".join(core_cells[0]["source"]), CORE.read_text(encoding="utf-8"))
+        self.assertEqual(
+            "".join(core_cells[0]["source"]), CORE.read_text(encoding="utf-8")
+        )
 
     def test_notebook_contains_required_evaluation_and_wandb_settings(self):
         notebook = self.load_notebook()
-        source = "\n".join("".join(cell["source"]) for cell in self.code_cells(notebook))
+        source = "\n".join(
+            "".join(cell["source"]) for cell in self.code_cells(notebook)
+        )
 
         required_fragments = [
             '"model_id": "Qwen/Qwen2.5-0.5B"',
@@ -67,9 +70,7 @@ class ColabNotebookTests(unittest.TestCase):
 
     def test_notebook_has_install_instructions_and_result_explanation(self):
         notebook = self.load_notebook()
-        all_source = "\n".join(
-            "".join(cell["source"]) for cell in notebook["cells"]
-        )
+        all_source = "\n".join("".join(cell["source"]) for cell in notebook["cells"])
 
         self.assertIn("pip install", all_source)
         self.assertIn("This notebook evaluates; it does not train", all_source)
