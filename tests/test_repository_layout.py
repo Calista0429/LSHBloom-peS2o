@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -62,3 +63,42 @@ def test_analysis_code_is_separate_from_generated_reports():
     ).is_file()
     assert not (ROOT / "reports" / "qwen_results").exists()
     assert not (ROOT / "figures").exists()
+
+
+def test_readme_points_to_the_public_repository_layout():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    expected_links = {
+        "docs/assets/expected-efficiency-curves.svg",
+        "notebooks/plamo/",
+        "notebooks/qwen/",
+        "reports/qwen/README.md",
+    }
+    assert all(link in readme for link in expected_links)
+
+
+def test_repository_omits_unrequested_community_and_ci_files():
+    assert not (ROOT / "requirements-dedup.txt").exists()
+    assert not (ROOT / "LICENSE").exists()
+    assert not (ROOT / "CONTRIBUTING.md").exists()
+    assert not (ROOT / "SECURITY.md").exists()
+    assert not (ROOT / ".github" / "workflows").exists()
+
+
+def test_local_markdown_links_resolve():
+    link_pattern = re.compile(r"!?\[[^]]*\]\(([^)]+)\)")
+    broken = []
+
+    for markdown_file in ROOT.rglob("*.md"):
+        if any(part.startswith(".") for part in markdown_file.relative_to(ROOT).parts):
+            continue
+        content = markdown_file.read_text(encoding="utf-8")
+        for destination in link_pattern.findall(content):
+            destination = destination.strip().strip("<>")
+            if not destination or destination.startswith(("#", "http://", "https://")):
+                continue
+            local_path = destination.split("#", maxsplit=1)[0]
+            target = (markdown_file.parent / local_path).resolve()
+            if not target.exists():
+                broken.append(f"{markdown_file.relative_to(ROOT)} -> {destination}")
+
+    assert not broken, "Broken local Markdown links:\n" + "\n".join(broken)

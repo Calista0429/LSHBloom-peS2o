@@ -59,7 +59,7 @@ The curve probe and the larger final validation use different sample sizes, so t
 - `fixed_token_summary.csv`: three-way 24,999,936-token results.
 - `efficiency_curve.csv`: three-way checkpoint measurements.
 - `efficiency_endpoint_summary.csv`: three-way one-epoch endpoint comparison.
-- `plot_qwen_results.py`: validation and plotting script.
+- [`../../scripts/analysis/plot_qwen_results.py`](../../scripts/analysis/plot_qwen_results.py): validation and plotting script.
 - `source/`: local input instructions plus the earlier SciQ comparison CSV supplied during this experiment. Full S3 JSON snapshots remain local because they contain run metadata.
 
 The plots were generated from the saved source files. Error bars in the SciQ panels show one standard error.

@@ -1,286 +1,183 @@
-# LSHBloom Deduplication Experiment on peS2o
+# LSHBloom Deduplication on peS2o
 
-This project studies how different text deduplication methods affect continued
-pretraining and downstream model performance. The same Qwen2.5-0.5B Base model
-was continued-pretrained on three versions of a 5,000-document peS2o sample:
+This repository evaluates how MinHashLSH and LSHBloom deduplication affect
+continued pretraining on a 5,000-document peS2o sample. It contains the data
+preparation code, reproducible Colab notebooks, validation helpers, and the
+measured Qwen2.5-0.5B results.
 
-1. Raw data without deduplication
-2. Data deduplicated with MinHashLSH
-3. Data deduplicated with LSHBloom
+## Headline result
 
-All three models were trained with the same token budget and hyperparameters.
-The resulting checkpoints were evaluated on the complete SciQ test split.
+For one epoch over each complete dataset, deduplication reduced both training
+tokens and measured GPU time while retaining similar endpoint quality:
 
-## Experimental Pipeline
+| Training data | Tokens | Token reduction | GPU hours | GPU-hour reduction | Final SciQ norm. | Full validation PPL |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Raw | 31,410,176 | — | 0.7167 | — | 84.2% | **11.4907** |
+| MinHashLSH | 28,805,120 | 8.29% | 0.6573 | 8.28% | 84.1% | 11.5771 |
+| LSHBloom | 28,751,872 | **8.46%** | 0.6560 | **8.47%** | **85.3%** | 11.5295 |
+
+LSHBloom produced the strongest deduplicated endpoint in this run. This is a
+single-seed pilot, and its PyTorch version differed from the other two runs, so
+the result is evidence of comparable efficiency rather than a causal claim
+that LSHBloom improves model quality. See the [complete Qwen result
+assessment](reports/qwen/README.md) for the curves, controls, and limitations.
+
+## Method
+
+The source sample is transformed into three variants:
 
 ```text
 5,000 peS2o documents
         |
-        +-- Raw -----------> Qwen checkpoint ----+
-        +-- MinHashLSH ----> Qwen checkpoint ----+--> SciQ evaluation
-        +-- LSHBloom ------> Qwen checkpoint ----+
+        +-- Raw
+        +-- MinHashLSH (Jaccard threshold 0.5)
+        +-- LSHBloom  (Jaccard threshold 0.5)
+                 |
+                 +-- continued pretraining
+                 +-- peS2o validation perplexity
+                 +-- SciQ zero-shot accuracy
 ```
 
-The experiment changes only the training-data deduplication method. Model
-architecture, starting weights, training tokens, optimization settings, and
-evaluation settings remain fixed.
+The deduplication configuration uses `datasketch==2.0.0`, 256 MinHash
+permutations, seed 1, and an LSHBloom requested effective false-positive rate
+of `1e-10`. Text is represented as a set of lowercased whitespace-token
+unigrams.
 
-## Dataset Variants
+The prepared sample contains:
 
-| Variant | Documents retained | Documents removed | Removal rate | Available tokens |
-|---|---:|---:|---:|---:|
-| Raw | 5,000 | 0 | 0.00% | 31,410,586 |
-| MinHashLSH | 4,617 | 383 | 7.66% | 28,805,685 |
-| LSHBloom | 4,611 | 389 | 7.78% | 28,752,978 |
+| Variant | Documents | Documents removed | Available Qwen tokens |
+| --- | ---: | ---: | ---: |
+| Raw | 5,000 | 0 | 31,410,586 |
+| MinHashLSH | 4,617 | 383 | 28,805,685 |
+| LSHBloom | 4,611 | 389 | 28,752,978 |
 
-MinHashLSH and LSHBloom made the same keep-or-remove decision for 4,994
-of the 5,000 documents. They differed on only six documents, corresponding to
-99.88% decision agreement.
+MinHashLSH and LSHBloom agree on 4,994 of 5,000 retention decisions (99.88%).
 
-Deduplication settings:
+## Installation
 
-- `datasketch==2.0.0`
-- Jaccard threshold: `0.5`
-- MinHash permutations: `256`
-- LSHBloom requested effective false-positive rate: `1e-10`
-- Text representation: lowercased whitespace-token unigram sets
-- Seed: `1`
+Python 3.10 or later is required. Create an isolated environment and install
+the package with its local analysis and test tools:
 
-## Continued Pretraining
-
-Each dataset variant was used to continue pretraining
-`Qwen/Qwen2.5-0.5B` under identical conditions:
-
-- Input tokens: `24,999,936`
-- Sequence length: `2,048`
-- Training sequences: `12,207`
-- Training epochs: `1`
-- Learning rate: `5e-5`
-- Gradient accumulation steps: `8`
-- Training seed: `42`
-- Mixed precision: FP16
-
-The final training losses were 2.3604 for Raw, 2.3620 for MinHashLSH, and
-2.3614 for LSHBloom.
-
-## PLaMo 2 1B Equal-Token Replication
-
-The PLaMo replication preserves the original equal-compute data protocol:
-Raw, MinHashLSH, and LSHBloom each provide exactly `24,883,200` model-input
-tokens (`12,150` sequences of length `2,048`). Complete-file counts with the
-pinned PLaMo tokenizer are `27,161,292`, `24,930,000`, and `24,883,479`,
-respectively. The common budget is the largest full-sequence budget supported
-by all three variants. The Qwen token counts in the source manifest are not
-used as PLaMo token counts.
-
-Open
-[`notebooks/plamo2_1b_pes2o_continued_pretraining.ipynb`](notebooks/plamo2_1b_pes2o_continued_pretraining.ipynb)
-in Colab. Select an A100 and the `2025.07` past runtime with Python 3.11. The
-first setup run installs every pinned PLaMo dependency and restarts Colab once;
-after reconnection, run all cells again. The setup cell keeps NumPy at the
-runtime's native `2.0.2` version and checks the NumPy, Transformers, and custom
-kernel imports before downloading data. Then run one variant per fresh runtime:
-
-1. `VARIANT = "raw"`
-2. `VARIANT = "minhashlsh"`
-3. `VARIANT = "lshbloom"`
-
-All three variants must be rerun with this common budget. A Raw checkpoint from
-the earlier `24,999,936`-token attempt is not directly comparable.
-
-The model and remote model code are pinned to Hugging Face revision
-`92c75fd6eea9018bcb9c33ee8921589febe071fa`. All three runs use Adafactor,
-BF16 computation with FP32 model parameters, gradient checkpointing, the same
-learning-rate schedule, and seed `42`. BF16 avoids the non-finite forward loss
-observed with FP16 on PLaMo 2 while retaining mixed-precision execution on the
-A100. This model-specific optimizer choice means absolute PLaMo and Qwen
-training results should not be interpreted as a controlled architecture
-comparison.
-
-Final PLaMo checkpoints and result JSON files are stored under:
-
-```text
-s3://calista-bucket/pes2o/v2/experiments/pilot-5000/plamo-2-1b-equal-24883200/checkpoints/<variant>/
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
 ```
 
-## SciQ Evaluation
+The Colab notebooks install and pin their model-specific dependencies inside
+the runtime.
 
-The three final checkpoints were evaluated with
-[`lm-evaluation-harness`](https://github.com/EleutherAI/lm-evaluation-harness)
-version `0.4.13`.
+## Repository map
 
-- Task: `sciq`
-- Evaluation split: complete test split
-- Test examples: `1,000`
-- Few-shot examples: `0`
-- Chat template: disabled
-- Model precision: FP16
-- Batch size: `8`
-- Evaluation seed: `42`
+| Path | Purpose |
+| --- | --- |
+| [`src/lshbloom_pes2o/`](src/lshbloom_pes2o/) | Reusable deduplication, token packing, evaluation, and validation code |
+| [`scripts/data/`](scripts/data/) | peS2o variant preparation command |
+| [`scripts/analysis/`](scripts/analysis/) | Result validation and static figure generation |
+| [`scripts/notebooks/`](scripts/notebooks/) | Deterministic notebook builders |
+| [`notebooks/qwen/`](notebooks/qwen/) | Qwen training and evaluation notebooks |
+| [`notebooks/plamo/`](notebooks/plamo/) | PLaMo continued-pretraining notebook |
+| [`reports/qwen/`](reports/qwen/) | Versioned Qwen tables, figures, and interpretation |
+| [`tests/`](tests/) | Unit, notebook, and repository-structure tests |
 
-SciQ presents four candidate answers for each science question. `acc` selects
-the answer with the highest total likelihood. `acc_norm` normalizes likelihood
-by answer length and is the primary metric in this experiment.
+## Prepare the data variants
 
-## Results
+The input must be a JSONL or JSONL.GZ file with a text field accepted by the
+preparation library. This command creates Raw, MinHashLSH, and LSHBloom files
+plus a manifest with counts and hashes:
 
-| Training data | Accuracy | Accuracy SE | Length-normalized accuracy | Normalized accuracy SE | Normalized change vs. Raw |
-|---|---:|---:|---:|---:|---:|
-| Raw | 89.7% | 0.96% | **88.1%** | 1.02% | 0.0 pp |
-| MinHashLSH | **90.2%** | 0.94% | 86.9% | 1.07% | -1.2 pp |
-| LSHBloom | 90.0% | 0.95% | 86.9% | 1.07% | -1.2 pp |
-
-`pp` means percentage points. The full evaluation corresponds to approximately
-897, 902, and 900 correct answers under unnormalized accuracy, and 881, 869,
-and 869 correct answers under length-normalized accuracy.
-
-## Interpretation
-
-MinHashLSH and LSHBloom produced effectively identical SciQ performance. Their
-length-normalized accuracies are equal, and their unnormalized accuracies differ
-by only 0.2 percentage points. This is consistent with the two methods making
-different retention decisions for only six of the 5,000 input documents.
-
-Neither deduplicated checkpoint shows a clear improvement over Raw on the
-primary metric. Both are 1.2 percentage points below Raw, while the reported
-standard errors are approximately one percentage point per model. The aggregate
-scores alone do not establish that Raw is better: the observed difference is
-small relative to the uncertainty and may reflect training or evaluation
-variation.
-
-These results support a limited conclusion: at this pilot scale, LSHBloom
-preserves downstream SciQ quality as well as MinHashLSH. They do not show that
-deduplication harms model quality or that one deduplication method is generally
-superior.
-
-## Reproducing the SciQ Evaluation in Colab
-
-Open
-[`notebooks/qwen_pes2o_sciq_evaluation.ipynb`](notebooks/qwen_pes2o_sciq_evaluation.ipynb)
-in Google Colab and select a V100 GPU runtime.
-
-Add these values to Colab Secrets:
-
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `WANDB_API_KEY`
-- `AWS_SESSION_TOKEN` when using temporary AWS credentials
-- `AWS_DEFAULT_REGION` optionally; the notebook defaults to `ap-northeast-1`
-
-Run every cell from top to bottom. For each checkpoint, the notebook:
-
-1. Verifies the required files in S3.
-2. Downloads a temporary local copy.
-3. Runs a 10-example smoke test.
-4. Evaluates all 1,000 SciQ test examples.
-5. Saves the raw metrics and per-example outputs.
-6. Deletes the temporary checkpoint before loading the next model.
-
-Results are written to `/content/results/sciq/` and uploaded to W&B as one
-evaluation artifact. The final `comparison.csv` reports both absolute scores
-and changes relative to Raw.
-
-## Repository Structure
-
-- `notebooks/qwen_pes2o_sciq_evaluation.ipynb`: complete Colab evaluation
-- `notebooks/qwen_pes2o_continued_pretraining.ipynb`: continued-pretraining run
-- `notebooks/plamo2_1b_pes2o_continued_pretraining.ipynb`: PLaMo equal-24,883,200-token run
-- `notebooks/qwen_pes2o_efficiency_training.ipynb`: full-corpus checkpoint curves
-- `notebooks/qwen_pes2o_efficiency_curves.ipynb`: three-variant curve comparison
-- `src/sciq_evaluation.py`: SciQ result validation and comparison helpers
-- `src/efficiency_curves.py`: token accounting and curve-result validation
-- `src/pes2o_dedup.py`: peS2o deduplication implementation
-- `src/pes2o_training.py`: fixed-token training-data packing
-- `tests/`: reproducibility and correctness tests
-
-## Limitations and Next Step
-
-This is a small pilot with one training run per dataset variant and one
-downstream benchmark. The strongest next analysis is a paired comparison of the
-saved per-example SciQ outputs, using paired bootstrap confidence intervals or
-McNemar's test. Larger training datasets and multiple training seeds are needed
-before making general claims about the effect of deduplication on model quality.
-
-## Full-Corpus Training-Efficiency Experiment
-
-The fixed 25-million-token experiment controls training compute. A second,
-complementary experiment asks whether deduplication can reach the same quality
-while training on fewer tokens. In this experiment, each variant is trained for
-one epoch over every complete 2,048-token sequence available in that variant.
-
-| Variant | Complete sequences | Training tokens | Unused incomplete tail |
-|---|---:|---:|---:|
-| Raw | 15,337 | 31,410,176 | 410 |
-| MinHashLSH | 14,065 | 28,805,120 | 565 |
-| LSHBloom | 14,039 | 28,751,872 | 1,106 |
-
-The deduplicated runs therefore use approximately 8.3% and 8.5% fewer
-training tokens than Raw. All other training hyperparameters remain fixed. A
-fixed 50-step warmup followed by a constant learning rate gives every variant
-the same learning rate at the same cumulative token count.
-
-Open
-[`notebooks/qwen_pes2o_efficiency_training.ipynb`](notebooks/qwen_pes2o_efficiency_training.ipynb)
-in Colab and run it three times in separate V100 runtimes:
-
-1. Set `VARIANT = "raw"` and run every cell.
-2. Set `VARIANT = "minhashlsh"` in a new runtime and run every cell.
-3. Set `VARIANT = "lshbloom"` in a new runtime and run every cell.
-
-Every 250 optimizer updates, the notebook evaluates a fixed 128-sequence
-peS2o validation probe and saves a temporary model-only checkpoint. After
-training, it evaluates the Base model and every checkpoint on all 1,000 SciQ
-test examples. It records:
-
-- cumulative training tokens;
-- cumulative training-only GPU hours;
-- validation loss and perplexity;
-- SciQ accuracy and length-normalized accuracy;
-- SciQ standard errors.
-
-The Qwen Base model, peS2o validation files, and SciQ task dataset are pinned to
-immutable Hugging Face revisions. Each run records the source-manifest hash,
-validation-probe token hash, software versions, GPU model, and a shared
-experiment fingerprint. The plotting notebook refuses to combine results
-unless all three fingerprints match.
-
-The final model and curve results are uploaded to S3 under:
-
-```text
-s3://calista-bucket/pes2o/v2/experiments/pilot-5000/efficiency/<variant>/
+```bash
+python scripts/data/prepare_pes2o_variants.py \
+  --input /path/to/pes2o-5000.jsonl.gz \
+  --output-dir /path/to/processed \
+  --expected-documents 5000
 ```
 
-The final model and a training-progress record are uploaded before the longer
-SciQ sweep begins. Each completed SciQ checkpoint measurement is also uploaded
-to a progress file. Intermediate checkpoints remain local and are used only to
-obtain curve points. Keep at least 25 GB of temporary disk space free. The
-model-only checkpoints cannot resume interrupted training.
+Use `--tokenizer Qwen/Qwen2.5-0.5B` when the environment also contains
+Transformers and the manifest should include model-token counts.
 
-W&B stores the training history and the small JSON/CSV evaluation artifact.
-The final model is stored once in S3 rather than duplicated in W&B.
+## Qwen experiments
 
-After all three training runs finish, open
-[`notebooks/qwen_pes2o_efficiency_curves.ipynb`](notebooks/qwen_pes2o_efficiency_curves.ipynb).
-It downloads the three result files and produces:
+The [Qwen notebooks](notebooks/qwen/) cover four stages:
 
-1. validation perplexity versus cumulative training tokens;
-2. SciQ normalized accuracy versus cumulative training tokens;
-3. validation perplexity versus training GPU hours;
-4. SciQ normalized accuracy versus training GPU hours.
+1. Validate base-model perplexity on a small peS2o sample.
+2. Continue pretraining each variant with an equal 24,999,936-token budget.
+3. Evaluate final checkpoints on all 1,000 examples in the SciQ test split.
+4. Train for one full corpus epoch and compare quality against cumulative
+   tokens and training GPU hours.
 
-The figure, combined CSV, PDF, and final cost summary are uploaded to W&B and
-to the S3 `efficiency/summary/` prefix. Diamonds mark the endpoint of one epoch,
-and SciQ error bars show the standard error reported by `lm-eval`.
+The controlled SciQ setup uses `lm-evaluation-harness==0.4.13`, zero-shot
+evaluation, no chat template, and length-normalized accuracy as its primary
+metric. Run each training variant in a fresh Colab runtime and keep the model
+revision, software versions, seed, validation hashes, and hyperparameters
+fixed.
 
-The expected shape below uses simulated values only. The Colab plotting
-notebook replaces these values with the measurements downloaded from S3.
+To rebuild the committed notebooks after changing a builder:
 
-![Simulated expected efficiency curves](figures/expected-efficiency-curves.svg)
+```bash
+for builder in scripts/notebooks/build_*_notebook.py; do
+  python "$builder"
+done
+```
 
-## Current Qwen Result Analysis
+## PLaMo replication
 
-The measured equal-token comparison and the complete three-way efficiency
-curves are summarized in
-[`reports/qwen_results/README.md`](reports/qwen_results/README.md). The report
-includes validated CSV tables and publication-ready PNG and PDF figures. It
-also records the PyTorch-version mismatch found in the LSHBloom run.
+The [PLaMo notebook](notebooks/plamo/) applies the same equal-compute protocol
+to `pfnet/plamo-2-1b`. Its common budget is 24,883,200 tokens because that is
+the largest complete 2,048-token sequence budget available to every variant
+under the pinned PLaMo tokenizer.
+
+Run it on an A100 with BF16 computation and FP32 model parameters. PLaMo uses
+a model-specific optimizer and dependency set, so its absolute results should
+not be treated as a controlled architecture comparison with Qwen.
+
+## Results and figures
+
+The [Qwen report](reports/qwen/README.md) contains both experiments:
+
+- At the equal 24,999,936-token budget, validation perplexity differs by less
+  than 0.04% from Raw for both deduplicated variants.
+- At the one-epoch endpoints, MinHashLSH and LSHBloom use about 8.3% and 8.5%
+  fewer tokens and GPU hours than Raw.
+- Continued pretraining lowers base-model SciQ performance in all three runs,
+  which suggests catastrophic forgetting, an aggressive training setup, or a
+  corpus-to-task mismatch.
+
+The following plot shows the expected direction using simulated values only;
+the report contains the measured curves.
+
+![Simulated expected efficiency curves](docs/assets/expected-efficiency-curves.svg)
+
+Rebuild all report tables and figures from the local source snapshots with:
+
+```bash
+python scripts/analysis/plot_qwen_results.py
+python scripts/analysis/generate_expected_efficiency_plot.py
+```
+
+The run JSON snapshots are intentionally ignored because they include local
+environment metadata. Derived CSV tables and publication-ready PNG, PDF, and
+SVG figures are versioned.
+
+## Local quality checks
+
+Run the same checks used to maintain this repository:
+
+```bash
+ruff format --check src scripts tests
+ruff check src scripts tests
+pytest -q
+```
+
+Tests validate deduplication behavior, token accounting, experiment identity,
+notebook contents, generated plots, repository layout, and local Markdown
+links. No hosted CI configuration is included.
+
+## Limitations
+
+The current evidence comes from a 5,000-document pilot and one training seed.
+The LSHBloom efficiency run used PyTorch `2.6.0+cu124`, while Raw and
+MinHashLSH used `2.11.0+cu128`. A strict comparison requires rerunning all
+variants in one pinned environment with at least three seeds. The repository
+does not include a license, so public visibility does not grant reuse rights.
